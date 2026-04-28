@@ -1,0 +1,3368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0f1419">
+<title>Tracer — ToDo</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1419;
+    color: #e2e8f0;
+    overscroll-behavior: none;
+  }
+
+  .app { position: fixed; inset: 0; display: flex; overflow: hidden; }
+  .screen {
+    flex: 0 0 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    transition: transform .35s cubic-bezier(.4, 0, .2, 1);
+  }
+  .app[data-screen="1"] .screen { transform: translateX(0); }
+  .app[data-screen="2"] .screen { transform: translateX(-100%); }
+  .app[data-screen="review"] #screen2 { display: none; }
+  .app[data-screen="review"] #screen1 { display: none; }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(15, 20, 25, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    padding: 10px 18px 8px;
+    border-bottom: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .topbar h1 {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar .accent { color: #14b8a6; }
+  .icon-btn {
+    background: transparent;
+    border: none;
+    color: #cbd5e1;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    line-height: 1;
+  }
+  .icon-btn:active { background: #1e293b; }
+  .back-btn { font-size: 18px; margin-left: -4px; }
+
+  /* Pinned + button on the right of the topbar — entry point for new lists */
+  .new-list-icon {
+    color: #14b8a6;
+    font-size: 20px;
+    font-weight: 400;
+    flex-shrink: 0;
+    margin-right: -4px;
+    line-height: 1;
+  }
+  .new-list-icon:hover { background: #14b8a611; }
+  .new-list-icon:active { background: #14b8a622; }
+
+  /* Default mobile: tighter side padding so content uses more of a 360-400px screen */
+  .screen-content { padding: 16px 14px 100px; }
+  /* Roomier side padding on bigger viewports */
+  @media (min-width: 420px) {
+    .screen-content { padding: 16px 18px 100px; }
+  }
+  /* Screen 2 has a topbar with its own 12px bottom padding + 1px divider —
+     the divider itself acts as the visual break, so the gap below it can be
+     tighter than on screens that have no divider above the content. */
+  #screen2 .screen-content { padding-top: 8px; }
+  .sub { color: #94a3b8; font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+
+  .drop {
+    border: 2px dashed #334155;
+    border-radius: 16px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: #1a2029;
+    margin-bottom: 14px;
+    display: block;
+  }
+  .drop.over { border-color: #14b8a6; background: #14b8a611; transform: scale(1.01); }
+  .drop input { display: none; }
+  .drop .icon { font-size: 38px; margin-bottom: 10px; }
+  .drop .ttl { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .drop .hint { font-size: 12px; color: #94a3b8; }
+
+  .actions-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .action-btn {
+    background: #1a2029;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 14px 10px;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s;
+  }
+  .action-btn:active { background: #242b35; transform: scale(0.97); }
+  .action-btn .ico { font-size: 22px; }
+
+  .panel {
+    background: #1a2029;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+  }
+  .panel h2 {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel img {
+    max-width: 100%;
+    max-height: 240px;
+    object-fit: contain;
+    border-radius: 8px;
+    display: block;
+    margin: 0 auto 10px;
+  }
+  .meta { font-size: 11px; color: #64748b; text-align: center; }
+
+  .progress {
+    background: #0f1419;
+    border-radius: 6px;
+    height: 6px;
+    overflow: hidden;
+    margin: 8px 0 6px;
+  }
+  .progress-bar {
+    background: linear-gradient(90deg, #14b8a6, #2dd4bf);
+    height: 100%;
+    width: 0;
+    transition: width .25s;
+  }
+  .stage { font-size: 12px; color: #94a3b8; }
+
+  .ghost-btn {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ghost-btn:active { background: #1e293b; }
+  .ghost-btn:hover { background: #1e293b; }
+
+  /* ===== Top-bar list tabs (replaces the single h1 list title) ===== */
+  .topbar-tabs { gap: 8px; }
+  .tabs-scroll {
+    flex: 1;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    /* Scrollbar hidden — users discover scroll via finger swipe */
+    scrollbar-width: none;
+    /* Symmetric vertical padding so the tab pills sit centered alongside
+       the back-arrow and + icon. */
+    padding: 2px 4px;
+    margin: 0 -4px;
+    min-width: 0;
+    align-items: center;
+    /* Allow the user to pan horizontally with their finger to scroll the row */
+    touch-action: pan-x;
+  }
+  .tabs-scroll::-webkit-scrollbar { display: none; }
+
+  .tab {
+    /* Properties matching the original .controls button.ghost exactly */
+    background: transparent;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+    /* Functional additions ONLY needed because tabs live in a horizontal scroller */
+    flex-shrink: 0;
+    white-space: nowrap;
+    touch-action: pan-x;
+  }
+  .tab:hover { background: #1e293b; }
+  .tab.active {
+    background: #14b8a611;
+    border-color: #14b8a6;
+    color: #14b8a6;
+  }
+  .tab.dragging {
+    opacity: 0.35;
+    background: #14b8a608;
+    border-color: #14b8a655;
+    border-style: dashed;
+  }
+
+  /* Inline rename / new-list input — drops into the bar in place of the + */
+  .tab-input {
+    background: #0f1419;
+    border: 1px solid #14b8a6;
+    color: #e2e8f0;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    outline: none;
+    flex-shrink: 0;
+    min-width: 110px;
+    max-width: 160px;
+  }
+  .tab-input::placeholder { color: #64748b; font-weight: 500; }
+
+  .primary-btn {
+    background: linear-gradient(135deg, #14b8a6, #0d9488);
+    color: white;
+    border: none;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    width: 100%;
+  }
+  .primary-btn:active { transform: scale(0.98); }
+  .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .err {
+    background: #ef444411;
+    border: 1px solid #ef444433;
+    color: #fca5a5;
+    padding: 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    margin-bottom: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: inherit;
+  }
+  .err code {
+    display: inline-block;
+    background: #0f1419;
+    border: 1px solid #2d3748;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    color: #cbd5e1;
+  }
+
+  .review-bar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+  .review-bar .info { flex: 1; font-size: 12px; color: #94a3b8; }
+  .review-toggle-btn {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .review-toggle-btn:active { background: #1e293b; }
+
+  /* Hint paragraph above the review cards explaining how to add more images */
+  .review-hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: #94a3b8;
+    background: #1a2029;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+  }
+  .review-hint .back-glyph {
+    display: inline-block;
+    background: #0f1419;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0 5px;
+    line-height: 1.4;
+    font-size: 11px;
+  }
+
+  /* Image-source label appears between batches in the review list */
+  .review-source-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin: 14px 4px 8px;
+  }
+  .review-source-label:first-child { margin-top: 0; }
+
+  /* Continue-review pill on Screen 1 — appears when pendingReview has items */
+  .continue-review-wrap {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .continue-review {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    background: #14b8a611;
+    border: 1px solid #14b8a6;
+    color: #14b8a6;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 12px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background .15s, transform .12s;
+    text-align: left;
+  }
+  .continue-review .cr-text { flex: 1; }
+  .continue-review .cr-arrow { font-size: 18px; line-height: 1; }
+  .continue-review:hover { background: #14b8a622; }
+  .continue-review:active { transform: scale(0.99); }
+
+  .continue-review-discard {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    font-size: 18px;
+    line-height: 1;
+    padding: 0 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .continue-review-discard:hover {
+    background: #ef444411;
+    border-color: #ef4444;
+    color: #f87171;
+  }
+
+  /* ============================================================
+     CAMERA VIEWFINDER (Tier C)
+     ============================================================ */
+  .screen-camera {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 150;
+    display: flex;
+  }
+  #cameraVideo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+  .camera-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+  .camera-overlay > * { pointer-events: auto; }
+  .camera-topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: max(env(safe-area-inset-top), 14px) 14px 10px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+  }
+  .camera-title {
+    flex: 1;
+    text-align: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .camera-icon-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: white;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .camera-icon-btn:active { background: rgba(0,0,0,0.7); transform: scale(0.95); }
+  .camera-icon-btn.is-on {
+    background: #14b8a6;
+    border-color: #14b8a6;
+  }
+  .camera-bottombar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px max(env(safe-area-inset-bottom), 24px);
+    background: linear-gradient(0deg, rgba(0,0,0,0.55), transparent);
+  }
+  .camera-spacer { width: 40px; height: 40px; flex-shrink: 0; } /* balances the flip btn */
+  .camera-shutter {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: white;
+    border: 4px solid rgba(255,255,255,0.4);
+    cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(0,0,0,0.25);
+    transition: transform .12s, background .12s;
+  }
+  .camera-shutter:active {
+    transform: scale(0.92);
+    background: #cbd5e1;
+  }
+  .camera-error {
+    position: absolute;
+    inset: auto 20px 80px 20px;
+    background: rgba(239,68,68,0.95);
+    color: white;
+    font-size: 13px;
+    line-height: 1.4;
+    padding: 12px 14px;
+    border-radius: 10px;
+    text-align: center;
+    z-index: 5;
+  }
+
+  /* Live draggable crop rectangle on the camera viewfinder.
+     Sits above the video, below the chrome (topbar/bottombar). */
+  .cam-crop-rect {
+    position: absolute;
+    border: 2px solid #14b8a6;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+    z-index: 2;
+    cursor: move;
+    touch-action: none;
+    /* Rule-of-thirds gridlines */
+    background:
+      linear-gradient(transparent 33%, rgba(255,255,255,0.18) 33%, rgba(255,255,255,0.18) 33.3%, transparent 33.3%) repeat-y,
+      linear-gradient(transparent 66%, rgba(255,255,255,0.18) 66%, rgba(255,255,255,0.18) 66.3%, transparent 66.3%) repeat-y,
+      linear-gradient(90deg, transparent 33%, rgba(255,255,255,0.18) 33%, rgba(255,255,255,0.18) 33.3%, transparent 33.3%) repeat-x,
+      linear-gradient(90deg, transparent 66%, rgba(255,255,255,0.18) 66%, rgba(255,255,255,0.18) 66.3%, transparent 66.3%) repeat-x;
+    background-size: 100% 33.4%, 100% 66.4%, 33.4% 100%, 66.4% 100%;
+  }
+  /* Inherit the same handle styles as the post-capture crop screen */
+  .cam-crop-rect .crop-handle {
+    position: absolute;
+    background: #14b8a6;
+    border: 2px solid white;
+    border-radius: 50%;
+    box-sizing: border-box;
+    /* Slightly larger handles than the post-crop screen since fingers must
+       grab them through camera-overlay z-index issues */
+    z-index: 3;
+  }
+  .cam-crop-rect .h-tl, .cam-crop-rect .h-tr,
+  .cam-crop-rect .h-bl, .cam-crop-rect .h-br {
+    width: 22px; height: 22px;
+  }
+  .cam-crop-rect .h-tl { top: -12px; left: -12px; }
+  .cam-crop-rect .h-tr { top: -12px; right: -12px; }
+  .cam-crop-rect .h-bl { bottom: -12px; left: -12px; }
+  .cam-crop-rect .h-br { bottom: -12px; right: -12px; }
+  .cam-crop-rect .h-t, .cam-crop-rect .h-b {
+    left: 50%; transform: translateX(-50%);
+    width: 32px; height: 8px; border-radius: 4px;
+  }
+  .cam-crop-rect .h-t { top: -5px; }
+  .cam-crop-rect .h-b { bottom: -5px; }
+  .cam-crop-rect .h-l, .cam-crop-rect .h-r {
+    top: 50%; transform: translateY(-50%);
+    width: 8px; height: 32px; border-radius: 4px;
+  }
+  .cam-crop-rect .h-l { left: -5px; }
+  .cam-crop-rect .h-r { right: -5px; }
+
+  /* ============================================================
+     CROP & EXTRACT (Tier B)
+     ============================================================ */
+  .screen-crop {
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    background: #0f1419;
+    display: flex;
+    flex-direction: column;
+    /* Override the carousel transform inherited from .screen */
+    transform: none !important;
+    flex: none !important;
+  }
+  .screen-crop .topbar { flex-shrink: 0; }
+  .crop-stage {
+    flex: 1;
+    position: relative;
+    background: #000;
+    overflow: hidden;
+    /* Image is positioned absolutely inside; we measure its on-screen rect dynamically */
+    touch-action: none; /* finger drags adjust crop, never scroll the page */
+  }
+  #cropImage {
+    position: absolute;
+    /* JS sets left/top/width/height to fit-contain the stage */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+  }
+  .crop-rect {
+    position: absolute;
+    border: 2px solid #14b8a6;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,0.55);
+    cursor: move;
+    /* Inset background grid for visual feedback */
+    background:
+      linear-gradient(transparent 33%, rgba(255,255,255,0.15) 33%, rgba(255,255,255,0.15) 33.3%, transparent 33.3%) repeat-y,
+      linear-gradient(transparent 66%, rgba(255,255,255,0.15) 66%, rgba(255,255,255,0.15) 66.3%, transparent 66.3%) repeat-y,
+      linear-gradient(90deg, transparent 33%, rgba(255,255,255,0.15) 33%, rgba(255,255,255,0.15) 33.3%, transparent 33.3%) repeat-x,
+      linear-gradient(90deg, transparent 66%, rgba(255,255,255,0.15) 66%, rgba(255,255,255,0.15) 66.3%, transparent 66.3%) repeat-x;
+    background-size: 100% 33.4%, 100% 66.4%, 33.4% 100%, 66.4% 100%;
+  }
+  .crop-handle {
+    position: absolute;
+    background: #14b8a6;
+    border: 2px solid white;
+    border-radius: 50%;
+    box-sizing: border-box;
+  }
+  /* Corner handles — 18px circles */
+  .crop-handle.h-tl, .crop-handle.h-tr, .crop-handle.h-bl, .crop-handle.h-br {
+    width: 18px; height: 18px;
+  }
+  .crop-handle.h-tl { top: -10px; left: -10px; cursor: nwse-resize; }
+  .crop-handle.h-tr { top: -10px; right: -10px; cursor: nesw-resize; }
+  .crop-handle.h-bl { bottom: -10px; left: -10px; cursor: nesw-resize; }
+  .crop-handle.h-br { bottom: -10px; right: -10px; cursor: nwse-resize; }
+  /* Edge handles — pill bars */
+  .crop-handle.h-t, .crop-handle.h-b {
+    left: 50%; transform: translateX(-50%);
+    width: 28px; height: 6px; border-radius: 3px;
+    cursor: ns-resize;
+  }
+  .crop-handle.h-t { top: -4px; }
+  .crop-handle.h-b { bottom: -4px; }
+  .crop-handle.h-l, .crop-handle.h-r {
+    top: 50%; transform: translateY(-50%);
+    width: 6px; height: 28px; border-radius: 3px;
+    cursor: ew-resize;
+  }
+  .crop-handle.h-l { left: -4px; }
+  .crop-handle.h-r { right: -4px; }
+
+  .crop-actions {
+    flex-shrink: 0;
+    background: #0f1419;
+    border-top: 1px solid #1e293b;
+    padding: 12px 18px max(env(safe-area-inset-bottom), 16px);
+    display: flex;
+    gap: 10px;
+  }
+  .crop-actions .ghost-btn {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 11px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .crop-actions .ghost-btn:hover { background: #1e293b; }
+  .crop-actions .primary-btn { flex: 1; }
+
+  .review-card {
+    background: #1a2029;
+    border: 1px solid #2d3748;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: all .15s;
+  }
+  .review-card:active { background: #242b35; }
+  .review-card.unchecked { background: #131a22; opacity: 0.55; }
+  .review-card .check-box {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #475569;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .2s;
+  }
+  .review-card:not(.unchecked) .check-box {
+    background: #14b8a6;
+    border-color: #14b8a6;
+  }
+  .review-card:not(.unchecked) .check-box::after {
+    content: '✓';
+    color: white;
+    font-size: 14px;
+    font-weight: 800;
+  }
+  .review-card .text { flex: 1; font-size: 14px; color: #e2e8f0; word-break: break-word; }
+  .review-card.unchecked .text { color: #64748b; text-decoration: line-through; }
+
+  .review-actions {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(180deg, transparent, rgba(15, 20, 25, 0.95) 30%);
+    padding: 24px 18px 18px;
+    z-index: 20;
+  }
+  @media (min-width: 600px) {
+    .review-actions { left: auto; right: auto; max-width: 560px; width: 100%; }
+  }
+
+  /* Outer panel that wraps each section (Items / Done) — matches the reference UI */
+  .list-panel {
+    background: #1a2029;
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  .list-panel + .list-panel { margin-top: 0; }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #2d3748;
+  }
+  .panel-header .title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #34d399;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .panel-header.done .title { color: #64748b; }
+  .panel-header .right-side {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-header .count {
+    font-size: 10px;
+    background: #2d3748;
+    color: #cbd5e1;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+  }
+  .clear-done-btn {
+    background: transparent;
+    border: 1px solid #2d3748;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .clear-done-btn:active { background: #ef444411; color: #f87171; border-color: #ef444433; }
+
+  /* Empty hint inside a panel */
+  .panel-empty {
+    color: #475569;
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    padding: 18px 8px;
+  }
+
+  .card {
+    background: #0f1419;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.4;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background .12s, border-color .12s, transform .12s, opacity .12s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+  .card:last-child { margin-bottom: 0; }
+  /* Original Tracer micro-interaction: card nudges 2px right on hover */
+  .card:hover { border-color: #475569; transform: translateX(2px); }
+  .card:active { background: #161d27; }
+  .card.dragging {
+    opacity: 0.35;
+    background: #14b8a608;
+    border-color: #14b8a655;
+    border-style: dashed;
+  }
+
+  .card .text {
+    flex: 1;
+    word-break: break-word;
+    color: #e2e8f0;
+    transition: color .25s;
+    position: relative;
+    white-space: pre-wrap;
+  }
+  .card .text::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 0;
+    height: 1.5px;
+    background: #64748b;
+    transition: width .3s ease;
+  }
+  .card.done {
+    background: #0c1117;
+    border-color: #1e293b;
+  }
+  .card.done .text { color: #64748b; }
+  .card.done .text::after { width: 100%; }
+
+  .card .edit, .card .del {
+    flex-shrink: 0;
+    color: #64748b;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    line-height: 1;
+    transition: opacity .15s, color .15s, background .15s;
+  }
+  .card .edit:hover { color: #14b8a6; background: #14b8a611; }
+  .card .del:hover { color: #f87171; background: #ef444411; }
+  .card .edit:active { color: #14b8a6; background: #14b8a611; }
+  .card .del:active { color: #f87171; background: #ef444411; }
+  .card.done .edit { display: none; }
+
+  /* Web hover-to-reveal: hide icons until card is hovered.
+     Mobile (no hover capability) skips this rule and keeps icons visible. */
+  @media (hover: hover) and (pointer: fine) {
+    .card .edit, .card .del { opacity: 0; }
+    .card:hover .edit, .card:hover .del { opacity: 1; }
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: #475569;
+    font-size: 13px;
+    font-style: italic;
+  }
+  .empty-state .big { font-size: 38px; margin-bottom: 10px; opacity: 0.5; }
+
+  .fab {
+    position: fixed;
+    right: 20px;
+    bottom: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #14b8a6, #0d9488);
+    color: white;
+    border: none;
+    font-size: 28px;
+    font-weight: 300;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(20, 184, 166, 0.4), 0 2px 6px rgba(0,0,0,0.3);
+    z-index: 50;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    transition: transform .15s;
+  }
+  .fab:active { transform: scale(0.92); }
+  .app[data-screen="2"] .fab { display: flex; }
+
+  .modal-bg {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 100;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-bg.show { display: flex; animation: fadeIn .2s ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal {
+    background: #1a2029;
+    border: 1px solid #334155;
+    border-radius: 18px 18px 0 0;
+    padding: 20px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: slideUp .25s cubic-bezier(.4, 0, .2, 1);
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal h3 { font-size: 15px; margin-bottom: 12px; color: #e2e8f0; }
+  .modal input[type="text"] {
+    width: 100%;
+    background: #0f1419;
+    border: 1px solid #334155;
+    color: #e2e8f0;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: inherit;
+    margin-bottom: 14px;
+    outline: none;
+  }
+  .modal input[type="text"]:focus { border-color: #14b8a6; }
+  .modal .row { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal .row button {
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .modal .row .cancel { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+  .modal .row .save { background: #14b8a6; color: white; }
+  .modal .row .save:active { background: #0d9488; }
+  .modal .row .danger { background: #ef4444; color: white; }
+  .modal .row .danger:hover { background: #dc2626; }
+  .modal .row .danger:active { background: #b91c1c; }
+
+  /* Confirm dialog tweaks */
+  .confirm-modal { padding: 22px 20px 18px; }
+  .confirm-message {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #cbd5e1;
+    margin-bottom: 18px;
+    word-wrap: break-word;
+  }
+
+  /* Destination badge — shows which list scanned items will go to */
+  .dest-badge {
+    width: 100%;
+    background: #1a2029;
+    border: 1px solid #2d3748;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 9px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    transition: background .15s, border-color .15s;
+    text-align: left;
+  }
+  .dest-badge:hover { background: #242b35; border-color: #14b8a6; }
+  .dest-badge:active { transform: scale(0.99); }
+  .dest-badge .dest-label { color: #94a3b8; font-weight: 500; }
+  .dest-badge .dest-name { flex: 1; color: #14b8a6; }
+  .dest-badge .dest-arrow { color: #64748b; font-size: 10px; line-height: 1; }
+
+  /* Destination picker bottom sheet */
+  .dest-menu-bg {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(2px);
+    z-index: 200;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn .15s ease;
+  }
+  .dest-menu-bg.show { display: flex; }
+  .dest-menu {
+    background: #1a2029;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 14px;
+    width: 100%;
+    max-width: 420px;
+    max-height: 70vh;
+    overflow-y: auto;
+    animation: slideUp .2s ease;
+  }
+  .dest-menu-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+  .dest-menu-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .dest-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    text-align: left;
+    transition: background .12s, border-color .12s;
+  }
+  .dest-menu-item:hover { background: #242b35; }
+  .dest-menu-item.selected {
+    background: #14b8a611;
+    border-color: #14b8a6;
+    color: #14b8a6;
+  }
+  .dest-menu-item .dest-item-name { flex: 1; }
+  .dest-menu-item .dest-item-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    background: #0f1419;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .dest-menu-item.selected .dest-item-count { color: #14b8a6; background: #14b8a611; }
+  .dest-menu-item .dest-check {
+    width: 14px;
+    color: #14b8a6;
+    font-size: 12px;
+    text-align: center;
+    visibility: hidden;
+  }
+  .dest-menu-item.selected .dest-check { visibility: visible; }
+  .dest-menu-newlist {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    background: transparent;
+    border: 1px dashed #334155;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all .12s;
+  }
+  .dest-menu-newlist:hover { background: #14b8a611; border-color: #14b8a6; color: #14b8a6; border-style: solid; }
+
+  /* ============================================================
+     MOBILE OVERRIDES (Rec 2 + Rec 6) — apply on viewports < 600px
+     Bumps tap targets, font sizes, and removes wasted vertical space.
+     Desktop (≥600px) keeps the tighter, original-Tracer-matching look.
+     ============================================================ */
+  @media (max-width: 599.98px) {
+    /* Section panel padding equals card horizontal padding (14px), so card
+       TEXT and section TITLE align at the same x-coordinate without any
+       negative-margin tricks. ✕ on cards aligns under the count badge. */
+    .list-panel {
+      padding: 14px;
+      border-radius: 14px;
+      margin-bottom: 12px;
+    }
+    /* Cards: bigger padding, larger text, more line gap. Card sits flush
+       inside the panel — its 14px padding mirrors the panel's 14px padding,
+       so text positions match both top-line and right-edge. */
+    .card {
+      padding: 12px 14px;
+      font-size: 14px;
+      line-height: 1.45;
+      margin-bottom: 8px;
+      gap: 10px;
+      min-height: 44px; /* Apple HIG / Material tap-target */
+      margin-left: -14px;
+      margin-right: -14px;
+    }
+    /* Card delete / edit icons */
+    .card .edit, .card .del {
+      font-size: 14px;
+      padding: 6px 9px;
+      border-radius: 6px;
+    }
+
+    /* Tabs: a touch larger so finger taps land reliably */
+    .tab {
+      padding: 8px 12px;
+      font-size: 12px;
+      min-height: 36px;
+    }
+
+    /* Topbar icon buttons: 44px tap targets */
+    .icon-btn {
+      font-size: 20px;
+      padding: 8px 10px;
+      min-height: 40px;
+      min-width: 40px;
+    }
+    .back-btn { font-size: 20px; }
+    .new-list-icon { font-size: 22px; min-height: 40px; min-width: 40px; }
+
+    /* Section header tweaks (the panel padding itself was set above) */
+    .panel-header { padding-bottom: 10px; margin-bottom: 12px; }
+    .panel-header .title { font-size: 12px; }
+    .panel-header .count { font-size: 11px; padding: 3px 9px; }
+
+    /* Review screen cards: bigger */
+    .review-card {
+      padding: 14px 16px;
+      font-size: 14px;
+      line-height: 1.45;
+      min-height: 48px;
+    }
+
+    /* Bigger primary action buttons (Add to list, Save, etc.) */
+    .primary-btn {
+      padding: 14px 18px;
+      font-size: 15px;
+      border-radius: 12px;
+    }
+
+    /* Drop zone: larger title for mobile */
+    .drop .ttl { font-size: 16px; }
+    .drop .hint { font-size: 13px; }
+    .drop .icon { font-size: 36px; }
+
+    /* Action button (Camera): larger */
+    .action-btn {
+      padding: 16px 12px;
+      font-size: 14px;
+    }
+    .action-btn .ico { font-size: 24px; }
+
+    /* Destination badge: bigger and easier to tap */
+    .dest-badge {
+      padding: 11px 14px;
+      font-size: 13px;
+    }
+
+    /* Modal text inputs and buttons */
+    .modal input { font-size: 15px; padding: 12px 14px; }
+    .modal h3 { font-size: 16px; }
+    .modal .row button { padding: 11px 16px; font-size: 14px; min-height: 42px; }
+
+    /* FAB sized for thumbs */
+    .fab {
+      width: 60px;
+      height: 60px;
+      font-size: 32px;
+    }
+  }
+
+  /* ============================================================
+     Rec 6 — section panels shrink to fit when nearly empty
+     Applied to all viewports.
+     ============================================================ */
+  .list-panel { min-height: 0; }
+  .list-panel .empty {
+    padding: 12px 8px;
+  }
+
+  /* ============================================================
+     Rec 3 — safe-area inset support for notched phones
+     ============================================================ */
+  .topbar {
+    padding-top: max(env(safe-area-inset-top), 10px);
+    padding-left: max(env(safe-area-inset-left), 18px);
+    padding-right: max(env(safe-area-inset-right), 18px);
+  }
+  .fab {
+    bottom: max(env(safe-area-inset-bottom), 24px);
+    right: max(env(safe-area-inset-right), 24px);
+  }
+  .review-actions {
+    padding-bottom: max(env(safe-area-inset-bottom), 18px);
+    padding-left: max(env(safe-area-inset-left), 18px);
+    padding-right: max(env(safe-area-inset-right), 18px);
+  }
+  .screen-content {
+    padding-left: max(env(safe-area-inset-left), 14px);
+    padding-right: max(env(safe-area-inset-right), 14px);
+  }
+  @media (min-width: 420px) {
+    .screen-content {
+      padding-left: max(env(safe-area-inset-left), 18px);
+      padding-right: max(env(safe-area-inset-right), 18px);
+    }
+  }
+
+  @media (min-width: 600px) {
+    .app { max-width: 560px; margin: 0 auto; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app" data-screen="1">
+
+  <section class="screen" id="screen1">
+    <div class="topbar">
+      <h1>Tracer<span class="accent">.</span></h1>
+      <button class="icon-btn" id="screen1ToList" title="Open list" aria-label="Open list">☰</button>
+    </div>
+
+    <div class="screen-content">
+      <!-- Destination badge: which list these scanned items will go into.
+           Tap to pick a different list. -->
+      <button id="destBadge1" class="dest-badge" type="button">
+        <span class="dest-label">Adding to:</span>
+        <span class="dest-name" id="destName1">My list</span>
+        <span class="dest-arrow">▾</span>
+      </button>
+
+      <p class="sub">Snap or drop an image. Items get extracted, then you review before adding.</p>
+
+      <label for="file" class="drop" id="drop">
+        <div class="icon">📄</div>
+        <div class="ttl" id="dropTitle">Drop image or tap to browse</div>
+        <div class="hint">JPG, PNG, BMP, WEBP — stays on your device</div>
+        <input type="file" id="file" accept="image/*" multiple>
+      </label>
+
+      <div class="actions-row">
+        <button class="action-btn" id="cameraBtn">
+          <span class="ico">📷</span><span>Camera</span>
+        </button>
+      </div>
+      <!-- Hidden fallback input: used only on browsers/devices without getUserMedia
+           support. Production path is the custom camera viewfinder (#screenCamera). -->
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+
+      <div id="errBox"></div>
+
+      <!-- Pill that appears on Screen 1 when there are pending review items
+           and you came back here to scan another image. Tap to jump back to review;
+           tap the × to discard all pending items. -->
+      <div id="continueReviewWrap" class="continue-review-wrap" style="display:none">
+        <button id="continueReviewBtn" class="continue-review" type="button">
+          <span class="cr-text"></span>
+          <span class="cr-arrow">→</span>
+        </button>
+        <button id="continueReviewDiscard" class="continue-review-discard" type="button" title="Discard">×</button>
+      </div>
+
+      <div class="panel" id="imgPanelWrap" style="display:none">
+        <h2>
+          <span>Image</span>
+          <button id="clearBtn" class="ghost-btn">Clear</button>
+        </h2>
+        <div id="imgPanel"></div>
+        <div id="status" style="display:none; margin-top: 12px;">
+          <div class="stage" id="stage">Starting...</div>
+          <div class="progress"><div class="progress-bar" id="bar"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="screen2">
+    <div class="topbar topbar-tabs">
+      <button class="icon-btn back-btn" id="backBtn" aria-label="Back">←</button>
+      <div class="tabs-scroll" id="tabsScroll">
+        <!-- list tabs injected by renderTabs() -->
+      </div>
+      <button class="icon-btn new-list-icon" id="newListIcon" type="button" aria-label="New list" title="New list">+</button>
+    </div>
+
+    <div class="screen-content">
+      <div id="listWrap"></div>
+    </div>
+  </section>
+
+  <section class="screen" id="screenReview" style="display:none">
+    <div class="topbar">
+      <button class="icon-btn back-btn" id="reviewBack" aria-label="Back">←</button>
+      <h1>Review extracted</h1>
+    </div>
+    <div class="screen-content" style="padding-bottom: 120px;">
+      <button id="destBadgeR" class="dest-badge" type="button">
+        <span class="dest-label">Adding to:</span>
+        <span class="dest-name" id="destNameR">My list</span>
+        <span class="dest-arrow">▾</span>
+      </button>
+
+      <div class="review-bar">
+        <div class="info" id="reviewInfo">0 selected</div>
+        <button class="review-toggle-btn" id="reviewSelectAll">All</button>
+        <button class="review-toggle-btn" id="reviewSelectNone">None</button>
+      </div>
+      <div class="review-hint">
+        Tap <span class="back-glyph">←</span> to scan another image, then come back here to confirm.
+      </div>
+      <div id="reviewWrap"></div>
+    </div>
+    <div class="review-actions">
+      <button class="primary-btn" id="reviewConfirm">Add to list</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: Custom camera viewfinder (Tier C)
+       Live <video> preview + capture button. Replaces the OS camera flow.
+       Falls back to the hidden #cameraInput on devices without getUserMedia.
+       ============================================================ -->
+  <section class="screen screen-camera" id="screenCamera" style="display:none">
+    <video id="cameraVideo" playsinline autoplay muted></video>
+    <!-- Live crop rectangle: drag to move, drag handles to resize. Capture
+         grabs only the region inside this rectangle. -->
+    <div class="cam-crop-rect" id="camCropRect">
+      <div class="crop-handle h-tl" data-handle="tl"></div>
+      <div class="crop-handle h-tr" data-handle="tr"></div>
+      <div class="crop-handle h-bl" data-handle="bl"></div>
+      <div class="crop-handle h-br" data-handle="br"></div>
+      <div class="crop-handle h-t" data-handle="t"></div>
+      <div class="crop-handle h-b" data-handle="b"></div>
+      <div class="crop-handle h-l" data-handle="l"></div>
+      <div class="crop-handle h-r" data-handle="r"></div>
+    </div>
+    <div class="camera-overlay">
+      <div class="camera-topbar">
+        <button class="camera-icon-btn" id="cameraClose" aria-label="Close">✕</button>
+        <div class="camera-title">Frame the text — drag handles to adjust</div>
+        <button class="camera-icon-btn" id="cameraTorchBtn" aria-label="Flash" style="display:none">⚡</button>
+      </div>
+      <div class="camera-bottombar">
+        <button class="camera-icon-btn camera-flip" id="cameraFlipBtn" aria-label="Switch camera">↻</button>
+        <button class="camera-shutter" id="cameraShutterBtn" aria-label="Capture"></button>
+        <button class="camera-icon-btn" id="cameraResetCropBtn" aria-label="Reset frame">⟲</button>
+      </div>
+    </div>
+    <canvas id="cameraCanvas" style="display:none"></canvas>
+  </section>
+
+  <!-- ============================================================
+       SCREEN: Crop & extract (Tier B)
+       Shows captured/uploaded image with a draggable resizable rectangle;
+       OCR runs on just the cropped region.
+       ============================================================ -->
+  <section class="screen screen-crop" id="screenCrop" style="display:none">
+    <div class="topbar">
+      <button class="icon-btn back-btn" id="cropBack" aria-label="Back">←</button>
+      <h1>Crop &amp; extract</h1>
+    </div>
+    <div class="crop-stage" id="cropStage">
+      <img id="cropImage" alt="" draggable="false">
+      <div class="crop-rect" id="cropRect">
+        <div class="crop-handle h-tl" data-handle="tl"></div>
+        <div class="crop-handle h-tr" data-handle="tr"></div>
+        <div class="crop-handle h-bl" data-handle="bl"></div>
+        <div class="crop-handle h-br" data-handle="br"></div>
+        <div class="crop-handle h-t" data-handle="t"></div>
+        <div class="crop-handle h-b" data-handle="b"></div>
+        <div class="crop-handle h-l" data-handle="l"></div>
+        <div class="crop-handle h-r" data-handle="r"></div>
+      </div>
+    </div>
+    <div class="crop-actions">
+      <button class="ghost-btn" id="cropFullBtn" type="button">Use full image</button>
+      <button class="primary-btn" id="cropConfirm" type="button">Extract from selection</button>
+    </div>
+  </section>
+
+  <button class="fab" id="fab" aria-label="Add item">+</button>
+</div>
+
+<!-- Destination picker dropdown — shared between Screen 1 and Review screen -->
+<div class="dest-menu-bg" id="destMenuBg">
+  <div class="dest-menu" id="destMenu">
+    <div class="dest-menu-title">Add scanned items to:</div>
+    <div class="dest-menu-items" id="destMenuItems"></div>
+    <button class="dest-menu-newlist" id="destMenuNewList" type="button">+ New list</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3 id="modalTitle">Add new item</h3>
+    <input type="text" id="modalInput" placeholder="What needs doing?" autocomplete="off">
+    <div class="row">
+      <button class="cancel" id="modalCancel">Cancel</button>
+      <button class="save" id="modalSave">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom confirm dialog (replaces native browser confirm) -->
+<div class="modal-bg" id="confirmModalBg">
+  <div class="modal confirm-modal">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p id="confirmMessage" class="confirm-message"></p>
+    <div class="row">
+      <button class="cancel" id="confirmCancel">Cancel</button>
+      <button class="danger" id="confirmOk">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom prompt dialog (replaces native browser prompt) -->
+<div class="modal-bg" id="promptModalBg">
+  <div class="modal">
+    <h3 id="promptTitle">Enter value</h3>
+    <p id="promptMessage" class="confirm-message" style="margin-bottom: 12px;"></p>
+    <input type="text" id="promptInput" autocomplete="off">
+    <div class="row">
+      <button class="cancel" id="promptCancel">Cancel</button>
+      <button class="save" id="promptOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STATE & STORAGE — schema v2 with auto-migration from v1
+============================================================ */
+const STORAGE_KEY = 'tracer_todo_v2';
+const LEGACY_KEY = 'tracer_todo_v1';
+
+let state = { version: 2, activeListId: null, lists: [] };
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.version === 2 && Array.isArray(parsed.lists)) {
+        state = parsed;
+        if (!state.lists.length) seedDefaultList();
+        else if (!state.lists.some(l => l.id === state.activeListId)) {
+          state.activeListId = state.lists[0].id;
+        }
+        return;
+      }
+    }
+    const legacyRaw = localStorage.getItem(LEGACY_KEY);
+    if (legacyRaw) {
+      const legacyItems = JSON.parse(legacyRaw) || [];
+      const id = uid();
+      state = {
+        version: 2,
+        activeListId: id,
+        lists: [{ id, name: 'My list', items: legacyItems }],
+      };
+      return;
+    }
+    seedDefaultList();
+  } catch (e) {
+    seedDefaultList();
+  }
+}
+function seedDefaultList() {
+  const id = uid();
+  state = { version: 2, activeListId: id, lists: [{ id, name: 'My list', items: [] }] };
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+function activeList() { return state.lists.find(l => l.id === state.activeListId) || state.lists[0]; }
+
+/* ========== ELEMENTS ========== */
+const app = document.getElementById('app');
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const cameraInput = document.getElementById('cameraInput');
+const cameraBtn = document.getElementById('cameraBtn');
+const imgPanelWrap = document.getElementById('imgPanelWrap');
+const imgPanel = document.getElementById('imgPanel');
+const statusBox = document.getElementById('status');
+const stageEl = document.getElementById('stage');
+const barEl = document.getElementById('bar');
+const clearBtn = document.getElementById('clearBtn');
+const dropTitle = document.getElementById('dropTitle');
+const errBox = document.getElementById('errBox');
+const screen1ToList = document.getElementById('screen1ToList');
+const backBtn = document.getElementById('backBtn');
+const tabsScroll = document.getElementById('tabsScroll');
+const fab = document.getElementById('fab');
+const listWrap = document.getElementById('listWrap');
+
+const screenReview = document.getElementById('screenReview');
+const reviewWrap = document.getElementById('reviewWrap');
+const reviewInfo = document.getElementById('reviewInfo');
+const reviewSelectAll = document.getElementById('reviewSelectAll');
+const reviewSelectNone = document.getElementById('reviewSelectNone');
+const reviewConfirm = document.getElementById('reviewConfirm');
+const reviewBack = document.getElementById('reviewBack');
+const continueReviewWrap = document.getElementById('continueReviewWrap');
+const continueReviewBtn = document.getElementById('continueReviewBtn');
+const continueReviewDiscard = document.getElementById('continueReviewDiscard');
+
+// Destination badges + picker dropdown
+const destBadge1 = document.getElementById('destBadge1');
+const destBadgeR = document.getElementById('destBadgeR');
+const destName1 = document.getElementById('destName1');
+const destNameR = document.getElementById('destNameR');
+const destMenuBg = document.getElementById('destMenuBg');
+const destMenu = document.getElementById('destMenu');
+const destMenuItems = document.getElementById('destMenuItems');
+const destMenuNewList = document.getElementById('destMenuNewList');
+
+const modalBg = document.getElementById('modalBg');
+const modalTitle = document.getElementById('modalTitle');
+const modalInput = document.getElementById('modalInput');
+const modalSave = document.getElementById('modalSave');
+const modalCancel = document.getElementById('modalCancel');
+
+/* ========== NAVIGATION ========== */
+function goScreen2() {
+  screenReview.style.display = 'none';
+  app.dataset.screen = '2';
+  renderList();
+}
+function goScreen1() {
+  screenReview.style.display = 'none';
+  app.dataset.screen = '1';
+  updateDestBadges();
+}
+function goReview() {
+  app.dataset.screen = 'review';
+  screenReview.style.display = 'block';
+  updateDestBadges();
+}
+backBtn.addEventListener('click', goScreen1);
+screen1ToList.addEventListener('click', goScreen2);
+reviewBack.addEventListener('click', () => {
+  // Don't clear pendingReview — user may be heading to Screen 1 to scan another image
+  goScreen1();
+  refreshContinueReview();
+});
+
+continueReviewBtn.addEventListener('click', () => {
+  if (pendingReview.length === 0) return;
+  goReview();
+});
+continueReviewDiscard.addEventListener('click', async () => {
+  const ok = await confirmDialog({
+    title: 'Discard pending items?',
+    message: `You have ${pendingReview.length} extracted item${pendingReview.length === 1 ? '' : 's'} waiting to be reviewed. Discard them?`,
+    okLabel: 'Discard',
+  });
+  if (!ok) return;
+  pendingReview = [];
+  refreshContinueReview();
+});
+
+// Show / hide the "Continue review" pill based on whether pendingReview has items
+function refreshContinueReview() {
+  if (pendingReview.length > 0) {
+    const sel = pendingReview.filter(p => p.checked).length;
+    continueReviewBtn.querySelector('.cr-text').textContent =
+      `Continue review — ${pendingReview.length} item${pendingReview.length === 1 ? '' : 's'} ready (${sel} selected)`;
+    continueReviewWrap.style.display = 'flex';
+  } else {
+    continueReviewWrap.style.display = 'none';
+  }
+}
+
+/* ========== DESTINATION BADGE + PICKER ==========
+   Tells the user which list scanned items will go into; tap to pick a different one. */
+
+function updateDestBadges() {
+  const list = activeList();
+  const name = list ? list.name : 'New list will be created';
+  destName1.textContent = name;
+  destNameR.textContent = name;
+}
+
+function openDestMenu() {
+  // Build the list of options. Preserves existing "create-from-confirm-with-no-list" behavior
+  // by simply setting activeListId — the confirm flow auto-creates a list if none exists.
+  destMenuItems.innerHTML = '';
+  if (state.lists.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'padding: 18px 12px; font-size: 12px; color: #64748b; text-align: center;';
+    empty.textContent = 'No lists yet — tap "+ New list" below.';
+    destMenuItems.appendChild(empty);
+  } else {
+    state.lists.forEach(l => {
+      const isActive = l.id === state.activeListId;
+      const item = document.createElement('button');
+      item.className = 'dest-menu-item' + (isActive ? ' selected' : '');
+      item.type = 'button';
+      item.innerHTML = `
+        <span class="dest-check">✓</span>
+        <span class="dest-item-name"></span>
+        <span class="dest-item-count">${l.items.length}</span>
+      `;
+      item.querySelector('.dest-item-name').textContent = l.name;
+      item.addEventListener('click', () => {
+        state.activeListId = l.id;
+        saveState();
+        updateDestBadges();
+        closeDestMenu();
+      });
+      destMenuItems.appendChild(item);
+    });
+  }
+  destMenuBg.classList.add('show');
+}
+
+function closeDestMenu() {
+  destMenuBg.classList.remove('show');
+}
+
+destBadge1.addEventListener('click', openDestMenu);
+destBadgeR.addEventListener('click', openDestMenu);
+destMenuBg.addEventListener('click', e => {
+  if (e.target === destMenuBg) closeDestMenu();
+});
+destMenuNewList.addEventListener('click', async () => {
+  // Close the dest menu BEFORE opening the prompt — prevents overlap
+  closeDestMenu();
+  const name = await promptDialog({
+    title: 'New list',
+    message: 'Name for the new list:',
+    placeholder: 'e.g. Diet, Groceries, Office',
+    okLabel: 'Create',
+  });
+  if (!name) return;
+  const id = uid();
+  state.lists.push({ id, name: name.trim().slice(0, 60), items: [] });
+  state.activeListId = id;
+  saveState();
+  updateDestBadges();
+  // Don't re-open the menu — user is now ready to scan into the new list
+});
+
+/* ========== SCREEN 1: FILE INPUT ========== */
+drop.addEventListener('dragover', e => {
+  if (e.dataTransfer.types.includes('Files')) {
+    e.preventDefault();
+    drop.classList.add('over');
+  }
+});
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault();
+  drop.classList.remove('over');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleFiles(fileInput.files);
+  fileInput.value = '';
+});
+cameraInput.addEventListener('change', () => {
+  // Fallback path: a device without getUserMedia returned a file from the OS camera app
+  if (cameraInput.files.length) handleFiles(cameraInput.files);
+  cameraInput.value = '';
+});
+cameraBtn.addEventListener('click', () => {
+  // Prefer custom in-app camera (live preview, focus control) when supported.
+  // Fall back to the hidden file input with capture="environment" otherwise.
+  if (canUseLiveCamera()) {
+    openCamera();
+  } else {
+    cameraInput.click();
+  }
+});
+
+clearBtn.addEventListener('click', () => {
+  imgPanel.innerHTML = '';
+  imgPanelWrap.style.display = 'none';
+  statusBox.style.display = 'none';
+  fileInput.value = '';
+  cameraInput.value = '';
+  dropTitle.textContent = 'Drop image or tap to browse';
+  clearError();
+});
+
+function showError(msg) { errBox.innerHTML = `<div class="err">${escapeHtml(msg)}</div>`; }
+function clearError() { errBox.innerHTML = ''; }
+
+/* ========== IMAGE PREPROCESS ========== */
+// Image preprocessing pipeline — much improved over the simple contrast bump.
+// Steps:
+//   1. Downscale to MAX px (Tesseract slows linearly with pixel count)
+//   2. Convert to grayscale (luminance-weighted)
+//   3. Light denoise with a 3x3 box blur (kills sensor noise on phone shots)
+//   4. Compute optimal binarization threshold via Otsu's method
+//   5. Apply hard threshold → pure black/white image
+// Otsu auto-finds the cutoff that maximizes between-class variance, working
+// well across lighting conditions. Way better than fixed 1.4× contrast.
+async function preprocessImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const MAX = 2000;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          const scale = MAX / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const imgData = ctx.getImageData(0, 0, width, height);
+        const d = imgData.data;
+        const N = width * height;
+
+        // Step 1: convert to grayscale in a separate Uint8 buffer
+        const gray = new Uint8ClampedArray(N);
+        for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+          gray[j] = (0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]) | 0;
+        }
+
+        // Step 2: 3x3 box-blur denoise (cheap, kills speckle without ruining text)
+        const blurred = new Uint8ClampedArray(N);
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            let sum = 0, count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              const yy = y + dy;
+              if (yy < 0 || yy >= height) continue;
+              for (let dx = -1; dx <= 1; dx++) {
+                const xx = x + dx;
+                if (xx < 0 || xx >= width) continue;
+                sum += gray[yy * width + xx];
+                count++;
+              }
+            }
+            blurred[y * width + x] = (sum / count) | 0;
+          }
+        }
+
+        // Step 3: build histogram for Otsu
+        const hist = new Uint32Array(256);
+        for (let i = 0; i < N; i++) hist[blurred[i]]++;
+
+        // Step 4: Otsu's method — find threshold that maximizes between-class variance
+        let total = N;
+        let sumAll = 0;
+        for (let t = 0; t < 256; t++) sumAll += t * hist[t];
+        let sumB = 0, wB = 0, wF = 0, varMax = 0, threshold = 127;
+        for (let t = 0; t < 256; t++) {
+          wB += hist[t];
+          if (wB === 0) continue;
+          wF = total - wB;
+          if (wF === 0) break;
+          sumB += t * hist[t];
+          const mB = sumB / wB;
+          const mF = (sumAll - sumB) / wF;
+          const between = wB * wF * (mB - mF) * (mB - mF);
+          if (between > varMax) { varMax = between; threshold = t; }
+        }
+
+        // Step 5: apply threshold → write back to RGBA buffer as B/W
+        for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+          const v = blurred[j] >= threshold ? 255 : 0;
+          d[i] = d[i+1] = d[i+2] = v;
+          d[i+3] = 255;
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(url);
+          if (blob) resolve(blob);
+          else reject(new Error('Canvas toBlob failed'));
+        }, 'image/png');
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Image load failed'));
+    };
+    img.src = url;
+  });
+}
+
+/* ========== OCR ========== */
+// handleFiles: top-level entry — process N images sequentially, all into pendingReview,
+// then route to the review screen ONCE at the end. Used by drop, file input, camera input.
+async function handleFiles(filesArray, opts = {}) {
+  // If pendingReview already has items, auto-append to it (preserves prior batches).
+  // Caller can still pass { append: false } to force-replace.
+  const append = opts.append !== undefined ? !!opts.append : pendingReview.length > 0;
+  // skipCrop: true → bypass the post-capture crop screen (used by live-camera
+  // capture, since the user already framed via the on-viewfinder crop rect)
+  const skipCrop = !!opts.skipCrop;
+  const files = Array.from(filesArray).filter(f => f && f.type && f.type.startsWith('image/'));
+  if (files.length === 0) {
+    showError('No image files selected.');
+    return;
+  }
+  let anyOk = false;
+  const startBatch = append ? (currentBatchNumber() + 1) : 1;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const batchLabel = `Image ${startBatch + i}`;
+
+    // Live-camera captures are already cropped — skip the crop screen.
+    // Other sources (drop, file picker, OS camera input) still go through it.
+    let imageToOcr = file;
+    if (!skipCrop) {
+      imageToOcr = await openCropScreen(file, batchLabel);
+      if (!imageToOcr) continue;  // user cancelled this image
+    }
+
+    const ok = await handleFile(imageToOcr, {
+      append: append || anyOk,           // first successful one replaces; rest append
+      batchLabel,
+      isMulti: files.length > 1 || append,
+    });
+    if (ok) anyOk = true;
+  }
+  if (anyOk) {
+    renderReview();
+    goReview();
+  }
+}
+
+// Returns the highest batch number currently used in pendingReview (0 if none)
+function currentBatchNumber() {
+  const labels = pendingReview.map(p => p.batchLabel || '');
+  const nums = labels.map(s => {
+    const m = s.match(/Image (\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  });
+  return nums.length ? Math.max(...nums) : 0;
+}
+
+async function handleFile(file, opts = {}) {
+  const append = !!opts.append;
+  const batchLabel = opts.batchLabel || 'Image 1';
+  clearError();
+  if (!file.type.startsWith('image/')) {
+    showError('Not an image file.');
+    return false;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    showError('File over 20 MB. Use a smaller image.');
+    return false;
+  }
+
+  // OCR always runs from Screen 1 — show progress in its panel
+  const url = URL.createObjectURL(file);
+  imgPanelWrap.style.display = 'block';
+  imgPanel.innerHTML = `<img src="${url}" alt=""><div class="meta">${escapeHtml(file.name)} • ${(file.size/1024).toFixed(1)} KB</div>`;
+  dropTitle.textContent = 'Drop another image to replace';
+  statusBox.style.display = 'block';
+  setStage('Loading OCR engine...', 5);
+
+  if (typeof Tesseract === 'undefined') {
+    showError('OCR engine could not load. Open this file directly in a browser (not in a preview pane).');
+    return false;
+  }
+
+  try {
+    setStage('Preparing image...', 8);
+    let processedBlob;
+    try { processedBlob = await preprocessImage(file); }
+    catch (e) { processedBlob = file; }
+
+    setStage('Loading OCR engine...', 12);
+
+    // ---- Worker loading strategy (unchanged) ----
+    const WORKER_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js';
+    let workerBlobUrl;
+    try {
+      const resp = await fetch(WORKER_URL);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const text = await resp.text();
+      const blob = new Blob([text], { type: 'application/javascript' });
+      workerBlobUrl = URL.createObjectURL(blob);
+    } catch (fetchErr) {
+      const isFile = location.protocol === 'file:';
+      const isNullOrigin = (location.origin === 'null' || location.origin === null);
+      if (isFile || isNullOrigin) {
+        showError(
+          'OCR engine could not load.\n\n' +
+          'This page is running from a "null" origin (likely opened directly from your file system, ' +
+          'or inside a sandboxed preview). Browsers block OCR workers in that context.\n\n' +
+          'Fix: serve the file from a tiny local web server. In the folder containing this file, run:\n' +
+          '  python3 -m http.server 8000\n' +
+          'then open http://localhost:8000/tracer-todo.html in your browser.'
+        );
+      } else {
+        showError('Failed to fetch OCR worker: ' + (fetchErr.message || fetchErr));
+      }
+      return false;
+    }
+
+    let worker;
+    try {
+      worker = await Tesseract.createWorker('eng', 1, {
+        workerPath: workerBlobUrl,
+        corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+        langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+        workerBlobURL: false,
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            setStage('Reading text... ' + Math.round(m.progress * 100) + '%', 30 + m.progress * 65);
+          } else if (m.status) {
+            setStage(humanize(m.status), Math.min(30, 5 + (m.progress || 0) * 25));
+          }
+        },
+      });
+    } finally {
+      URL.revokeObjectURL(workerBlobUrl);
+    }
+
+    const { data } = await worker.recognize(processedBlob);
+    await worker.terminate();
+    setStage('Done', 100);
+    setTimeout(() => statusBox.style.display = 'none', 400);
+
+    const rawText = (data.text || '').trim();
+    if (!rawText) {
+      showError(`${batchLabel}: no text detected. May be too blurry, dark, or rotated.`);
+      return false;
+    }
+
+    const lines = (data.lines || []).filter(l => l.text && l.text.trim());
+    let extracted = lines.length === 0
+      ? rawText.split('\n').map(t => t.trim()).filter(Boolean)
+      : lines.map(l => l.text.trim()).filter(Boolean);
+
+    const newItems = extracted.map(text => ({
+      id: uid(),
+      text,
+      checked: isItemLine(text),
+      batchLabel: opts.isMulti ? batchLabel : null,
+    }));
+
+    if (newItems.length === 0) {
+      showError(`${batchLabel}: no usable text lines found.`);
+      return false;
+    }
+    if (!newItems.some(p => p.checked)) {
+      newItems.forEach(p => p.checked = true);
+    }
+
+    if (append) {
+      pendingReview.push(...newItems);
+    } else {
+      pendingReview = newItems;
+    }
+
+    return true;
+  } catch (err) {
+    showError(`${batchLabel} failed: ` + (err.message || err));
+    return false;
+  }
+}
+
+function isItemLine(text) {
+  const lower = text.toLowerCase().trim();
+  if (!lower) return false;
+  if (/^(sub.?total|total|grand.?total|net.?total|amount.?(due|payable)|balance|tax|gst|cgst|sgst|igst|discount)/i.test(lower)) return false;
+  if (/^(rs|inr|₹|\$|usd|eur|€|£)\s*[\d,]+\.?\d*$/i.test(lower)) return false;
+  if (/(invoice|bill|receipt)\s*(no|#|number)/i.test(lower)) return false;
+  if (/\bgstin\b/i.test(lower)) return false;
+  if (/^(from|to|customer|vendor|supplier|buyer|seller)[\s:]/i.test(lower)) return false;
+  const hasLetters = /[a-z]{2,}/i.test(lower);
+  return hasLetters;
+}
+
+function setStage(label, pct) {
+  stageEl.textContent = label;
+  barEl.style.width = pct + '%';
+}
+
+/* ========== REVIEW SCREEN ========== */
+let pendingReview = [];
+
+function renderReview() {
+  // Group items by batch label; only show dividers when 2+ batches are present
+  const batches = [];
+  let cur = null;
+  pendingReview.forEach(p => {
+    const label = p.batchLabel || null;
+    if (!cur || cur.label !== label) {
+      cur = { label, items: [] };
+      batches.push(cur);
+    }
+    cur.items.push(p);
+  });
+  const showDividers = batches.filter(b => b.label).length >= 1 && batches.length >= 2;
+
+  let html = '';
+  batches.forEach(batch => {
+    if (showDividers && batch.label) {
+      html += `<div class="review-source-label">${escapeHtml(batch.label)}</div>`;
+    }
+    batch.items.forEach(p => {
+      html += `
+        <div class="review-card ${p.checked ? '' : 'unchecked'}" data-id="${p.id}">
+          <div class="check-box"></div>
+          <div class="text">${escapeHtml(p.text)}</div>
+        </div>`;
+    });
+  });
+  reviewWrap.innerHTML = html;
+  updateReviewInfo();
+  reviewWrap.querySelectorAll('.review-card').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      const p = pendingReview.find(x => x.id === id);
+      if (!p) return;
+      p.checked = !p.checked;
+      el.classList.toggle('unchecked', !p.checked);
+      updateReviewInfo();
+    });
+  });
+}
+
+function updateReviewInfo() {
+  const total = pendingReview.length;
+  const sel = pendingReview.filter(p => p.checked).length;
+  reviewInfo.textContent = `${sel} of ${total} selected`;
+  reviewConfirm.disabled = sel === 0;
+  reviewConfirm.textContent = sel === 0 ? 'Select items to add' : `Add ${sel} item${sel === 1 ? '' : 's'} to list`;
+}
+
+reviewSelectAll.addEventListener('click', () => {
+  pendingReview.forEach(p => p.checked = true);
+  renderReview();
+});
+reviewSelectNone.addEventListener('click', () => {
+  pendingReview.forEach(p => p.checked = false);
+  renderReview();
+});
+reviewConfirm.addEventListener('click', () => {
+  // If user deleted all lists, auto-create a default for these items
+  if (!state.lists.length || !state.activeListId) {
+    const id = uid();
+    state.lists.push({ id, name: 'My list', items: [] });
+    state.activeListId = id;
+  }
+  const list = activeList();
+  if (!list) return;
+  pendingReview.filter(p => p.checked).forEach(p => {
+    list.items.push({ id: uid(), text: p.text, done: false });
+  });
+  pendingReview = [];
+  saveState();
+  refreshContinueReview();
+  goScreen2();
+});
+
+/* ========================================================================
+   CUSTOM CAMERA VIEWFINDER (Tier C) — uses getUserMedia for live preview
+   ======================================================================== */
+
+const screenCamera = document.getElementById('screenCamera');
+const cameraVideo = document.getElementById('cameraVideo');
+const cameraCanvas = document.getElementById('cameraCanvas');
+const cameraClose = document.getElementById('cameraClose');
+const cameraShutterBtn = document.getElementById('cameraShutterBtn');
+const cameraFlipBtn = document.getElementById('cameraFlipBtn');
+const cameraTorchBtn = document.getElementById('cameraTorchBtn');
+const camCropRect = document.getElementById('camCropRect');
+const cameraResetCropBtn = document.getElementById('cameraResetCropBtn');
+
+let _cameraStream = null;
+let _cameraFacing = 'environment'; // 'environment' = rear, 'user' = front
+let _cameraTorchOn = false;
+
+function canUseLiveCamera() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
+            window.HTMLMediaElement &&
+            // Insecure contexts (file://, plain http on non-localhost) can't use camera
+            (window.isSecureContext || location.hostname === 'localhost' || location.hostname === '127.0.0.1'));
+}
+
+async function openCamera() {
+  // Quick precheck: not supported at all → fall straight to OS camera input
+  if (!canUseLiveCamera()) {
+    if (location.protocol === 'file:' || (!window.isSecureContext && location.hostname !== 'localhost')) {
+      showError('Live camera needs HTTPS. Falling back to your device camera app.');
+    }
+    cameraInput.click();
+    return;
+  }
+
+  app.dataset.screen = 'camera';
+  screenCamera.style.display = 'flex';
+  cameraTorchBtn.style.display = 'none';
+  _cameraTorchOn = false;
+  cameraTorchBtn.classList.remove('is-on');
+  // Clear any prior error
+  const oldErr = screenCamera.querySelector('.camera-error');
+  if (oldErr) oldErr.remove();
+
+  // Default the crop rect to ~80% of the screen, centered, after layout
+  requestAnimationFrame(() => requestAnimationFrame(resetCamCropRect));
+
+  await startCameraStream();
+}
+
+// Default crop rect = centered 80% of the camera screen (in CSS px)
+function resetCamCropRect() {
+  const r = screenCamera.getBoundingClientRect();
+  const w = Math.max(160, r.width * 0.8);
+  const h = Math.max(160, r.height * 0.6);
+  const x = (r.width - w) / 2;
+  const y = (r.height - h) / 2;
+  _camCropPos = { left: x, top: y, width: w, height: h };
+  applyCamCropRectStyle();
+}
+
+let _camCropPos = { left: 0, top: 0, width: 0, height: 0 };
+function applyCamCropRectStyle() {
+  camCropRect.style.left = _camCropPos.left + 'px';
+  camCropRect.style.top = _camCropPos.top + 'px';
+  camCropRect.style.width = _camCropPos.width + 'px';
+  camCropRect.style.height = _camCropPos.height + 'px';
+}
+
+// Reset button → restore default crop rect
+cameraResetCropBtn.addEventListener('click', resetCamCropRect);
+
+// Re-layout on resize/rotation
+window.addEventListener('resize', () => {
+  if (app.dataset.screen !== 'camera') return;
+  // Re-clamp the rect to new screen bounds (preserves user's framing reasonably)
+  const r = screenCamera.getBoundingClientRect();
+  const minSize = 60;
+  _camCropPos.width = Math.min(_camCropPos.width, r.width - 20);
+  _camCropPos.height = Math.min(_camCropPos.height, r.height - 20);
+  _camCropPos.left = Math.max(10, Math.min(_camCropPos.left, r.width - _camCropPos.width - 10));
+  _camCropPos.top = Math.max(10, Math.min(_camCropPos.top, r.height - _camCropPos.height - 10));
+  if (_camCropPos.width < minSize) _camCropPos.width = minSize;
+  if (_camCropPos.height < minSize) _camCropPos.height = minSize;
+  applyCamCropRectStyle();
+});
+
+// Drag interaction (pointer events for unified mouse/touch handling)
+let _camDragMode = null;
+let _camDragStart = null;
+const CAM_MIN_CROP = 60;
+
+camCropRect.addEventListener('pointerdown', e => {
+  // Don't capture taps that bubbled from chrome buttons
+  if (app.dataset.screen !== 'camera') return;
+  const target = e.target;
+  if (target.classList.contains('crop-handle')) {
+    _camDragMode = target.dataset.handle;
+  } else if (target === camCropRect) {
+    _camDragMode = 'move';
+  } else {
+    return;
+  }
+  _camDragStart = {
+    px: e.clientX,
+    py: e.clientY,
+    lp: { ..._camCropPos },
+  };
+  camCropRect.setPointerCapture(e.pointerId);
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+camCropRect.addEventListener('pointermove', e => {
+  if (!_camDragMode || !_camDragStart) return;
+  const dx = e.clientX - _camDragStart.px;
+  const dy = e.clientY - _camDragStart.py;
+  const start = _camDragStart.lp;
+  let { left, top, width, height } = start;
+
+  if (_camDragMode === 'move') {
+    left = start.left + dx;
+    top = start.top + dy;
+  } else {
+    if (_camDragMode.includes('l')) {
+      const nl = start.left + dx;
+      const nw = start.width - dx;
+      if (nw >= CAM_MIN_CROP) { left = nl; width = nw; }
+    }
+    if (_camDragMode.includes('r')) {
+      width = Math.max(CAM_MIN_CROP, start.width + dx);
+    }
+    if (_camDragMode.includes('t')) {
+      const nt = start.top + dy;
+      const nh = start.height - dy;
+      if (nh >= CAM_MIN_CROP) { top = nt; height = nh; }
+    }
+    if (_camDragMode.includes('b')) {
+      height = Math.max(CAM_MIN_CROP, start.height + dy);
+    }
+  }
+
+  // Clamp to screen bounds (with 10px breathing room so handles don't disappear)
+  const r = screenCamera.getBoundingClientRect();
+  if (left < 0) { width += left; left = 0; }
+  if (top < 0) { height += top; top = 0; }
+  if (left + width > r.width) width = r.width - left;
+  if (top + height > r.height) height = r.height - top;
+  width = Math.max(CAM_MIN_CROP, width);
+  height = Math.max(CAM_MIN_CROP, height);
+
+  _camCropPos = { left, top, width, height };
+  applyCamCropRectStyle();
+});
+
+camCropRect.addEventListener('pointerup', e => {
+  _camDragMode = null;
+  _camDragStart = null;
+  try { camCropRect.releasePointerCapture(e.pointerId); } catch (_) {}
+});
+camCropRect.addEventListener('pointercancel', () => {
+  _camDragMode = null;
+  _camDragStart = null;
+});
+
+async function startCameraStream() {
+  stopCameraStream();
+  try {
+    _cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: _cameraFacing },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+    cameraVideo.srcObject = _cameraStream;
+    // iOS Safari: play() must be triggered after srcObject is set.
+    // It returns a Promise we MUST await — silent failure otherwise.
+    try {
+      await cameraVideo.play();
+    } catch (playErr) {
+      // Some browsers throw on play() if the video isn't ready yet — try once more
+      await new Promise(r => setTimeout(r, 100));
+      try { await cameraVideo.play(); } catch (_) {}
+    }
+
+    // Detect torch capability (Android/Chrome only — silently no-op elsewhere)
+    const track = _cameraStream.getVideoTracks()[0];
+    if (track && track.getCapabilities) {
+      try {
+        const caps = track.getCapabilities();
+        cameraTorchBtn.style.display = caps && caps.torch ? '' : 'none';
+      } catch (_) {}
+    }
+  } catch (err) {
+    handleCameraError(err);
+  }
+}
+
+function handleCameraError(err) {
+  const name = err && err.name ? err.name : '';
+  const msg = err && err.message ? err.message : String(err);
+  let userMsg;
+  let canFallback = true;
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    userMsg = 'Camera permission denied. Enable it in your browser settings, or use file upload instead.';
+    canFallback = false;
+  } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    userMsg = 'No camera found on this device.';
+  } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+    userMsg = 'Camera is in use by another app. Close it and try again.';
+  } else if (name === 'OverconstrainedError') {
+    userMsg = 'Camera does not support these settings. Trying default camera...';
+    // Retry without facing-mode constraint
+    return retryCameraDefault();
+  } else if (name === 'NotSupportedError' || name === 'TypeError') {
+    userMsg = 'Camera API not supported on this browser. Falling back to device camera...';
+  } else {
+    userMsg = 'Camera unavailable: ' + msg;
+  }
+
+  showCameraError(userMsg, canFallback);
+}
+
+async function retryCameraDefault() {
+  try {
+    _cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    cameraVideo.srcObject = _cameraStream;
+    try { await cameraVideo.play(); } catch (_) {}
+  } catch (err) {
+    showCameraError('Default camera also failed: ' + (err.message || err), true);
+  }
+}
+
+function showCameraError(msg, canFallback) {
+  let el = screenCamera.querySelector('.camera-error');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'camera-error';
+    screenCamera.appendChild(el);
+  }
+  el.innerHTML = '';
+  const text = document.createElement('div');
+  text.style.cssText = 'margin-bottom: 10px';
+  text.textContent = msg;
+  el.appendChild(text);
+
+  if (canFallback) {
+    const btn = document.createElement('button');
+    btn.textContent = 'Use device camera app instead';
+    btn.style.cssText = 'background: white; color: #ef4444; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 600; font-family: inherit; cursor: pointer; font-size: 13px;';
+    btn.addEventListener('click', () => {
+      closeCameraToTracer();
+      cameraInput.click();
+    });
+    el.appendChild(btn);
+  } else {
+    const btn = document.createElement('button');
+    btn.textContent = 'Close';
+    btn.style.cssText = 'background: white; color: #ef4444; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 600; font-family: inherit; cursor: pointer; font-size: 13px;';
+    btn.addEventListener('click', closeCameraToTracer);
+    el.appendChild(btn);
+  }
+}
+
+function stopCameraStream() {
+  if (_cameraStream) {
+    _cameraStream.getTracks().forEach(t => {
+      try { t.stop(); } catch (_) {}
+    });
+    _cameraStream = null;
+  }
+  try { cameraVideo.srcObject = null; } catch (_) {}
+}
+
+cameraClose.addEventListener('click', closeCameraToTracer);
+function closeCameraToTracer() {
+  stopCameraStream();
+  screenCamera.style.display = 'none';
+  app.dataset.screen = '1';
+}
+
+cameraFlipBtn.addEventListener('click', () => {
+  _cameraFacing = _cameraFacing === 'environment' ? 'user' : 'environment';
+  startCameraStream();
+});
+
+cameraTorchBtn.addEventListener('click', async () => {
+  if (!_cameraStream) return;
+  const track = _cameraStream.getVideoTracks()[0];
+  if (!track || !track.applyConstraints) return;
+  _cameraTorchOn = !_cameraTorchOn;
+  try {
+    await track.applyConstraints({ advanced: [{ torch: _cameraTorchOn }] });
+    cameraTorchBtn.classList.toggle('is-on', _cameraTorchOn);
+  } catch (e) {
+    _cameraTorchOn = false;
+    cameraTorchBtn.classList.remove('is-on');
+  }
+});
+
+cameraShutterBtn.addEventListener('click', captureFromCamera);
+async function captureFromCamera() {
+  if (!_cameraStream) return;
+  const vw = cameraVideo.videoWidth;
+  const vh = cameraVideo.videoHeight;
+  if (!vw || !vh) return;
+
+  // Map the on-screen crop rect (in CSS px) to actual video frame coords.
+  // Video uses object-fit: cover → it scales by max(screenW/vw, screenH/vh)
+  // and overflows the smaller dimension symmetrically.
+  const sr = screenCamera.getBoundingClientRect();
+  const sw = sr.width, sh = sr.height;
+  const scale = Math.max(sw / vw, sh / vh);
+  const dispW = vw * scale;
+  const dispH = vh * scale;
+  const offsetX = (sw - dispW) / 2;  // negative when video overflows horizontally
+  const offsetY = (sh - dispH) / 2;
+
+  // Convert each crop edge from screen-space to video-space
+  let cropX = (_camCropPos.left - offsetX) / scale;
+  let cropY = (_camCropPos.top - offsetY) / scale;
+  let cropW = _camCropPos.width / scale;
+  let cropH = _camCropPos.height / scale;
+
+  // Clamp to the actual video frame
+  if (cropX < 0) { cropW += cropX; cropX = 0; }
+  if (cropY < 0) { cropH += cropY; cropY = 0; }
+  if (cropX + cropW > vw) cropW = vw - cropX;
+  if (cropY + cropH > vh) cropH = vh - cropY;
+  cropX = Math.max(0, Math.round(cropX));
+  cropY = Math.max(0, Math.round(cropY));
+  cropW = Math.max(1, Math.round(cropW));
+  cropH = Math.max(1, Math.round(cropH));
+
+  // Render only the cropped region to the canvas at native pixel resolution
+  cameraCanvas.width = cropW;
+  cameraCanvas.height = cropH;
+  const ctx = cameraCanvas.getContext('2d');
+  ctx.drawImage(cameraVideo, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+  cameraCanvas.toBlob(async blob => {
+    if (!blob) return;
+    const file = new File([blob], `camera-${Date.now()}.jpg`,
+      { type: 'image/jpeg', lastModified: Date.now() });
+    stopCameraStream();
+    screenCamera.style.display = 'none';
+    app.dataset.screen = '1';
+    // User already framed in the live preview — skip the post-capture crop
+    // screen by passing skipCrop:true.
+    handleFiles([file], { skipCrop: true });
+  }, 'image/jpeg', 0.92);
+}
+
+/* ========================================================================
+   CROP & EXTRACT (Tier B) — draggable resizable rectangle over a still image
+   ======================================================================== */
+
+const screenCrop = document.getElementById('screenCrop');
+const cropStage = document.getElementById('cropStage');
+const cropImage = document.getElementById('cropImage');
+const cropRect = document.getElementById('cropRect');
+const cropBack = document.getElementById('cropBack');
+const cropFullBtn = document.getElementById('cropFullBtn');
+const cropConfirm = document.getElementById('cropConfirm');
+
+// Resolver of the current openCropScreen() Promise — set when screen opens, cleared on close
+let _cropResolver = null;
+
+// Image-on-screen rect (in CSS px relative to cropStage)
+let _imgRect = { left: 0, top: 0, width: 0, height: 0 };
+// Crop rect in CSS px relative to image (NOT stage)
+let _cropPos = { left: 0, top: 0, width: 0, height: 0 };
+// Source image natural dimensions
+let _imgNatural = { width: 0, height: 0 };
+
+/**
+ * Show the crop screen for `file`. Returns a Promise that resolves to a
+ * cropped Blob (the user's selection) or `null` if cancelled.
+ */
+function openCropScreen(file, batchLabel) {
+  return new Promise(resolve => {
+    _cropResolver = resolve;
+
+    const url = URL.createObjectURL(file);
+    cropImage.onload = () => {
+      _imgNatural = { width: cropImage.naturalWidth, height: cropImage.naturalHeight };
+      // Use double-rAF so layout reflows before we measure
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        layoutCropImage();
+        resetCropToFull();
+      }));
+    };
+    cropImage.src = url;
+    cropImage._objUrl = url;
+    cropImage._file = file;
+
+    document.querySelector('.screen-crop .topbar h1').textContent =
+      `Crop & extract — ${batchLabel}`;
+
+    app.dataset.screen = 'crop';
+    screenCrop.style.display = 'flex';
+  });
+}
+
+function closeCropScreen(result) {
+  // Free the object URL we created in openCropScreen
+  if (cropImage._objUrl) {
+    URL.revokeObjectURL(cropImage._objUrl);
+    cropImage._objUrl = null;
+  }
+  cropImage._file = null;
+  cropImage.removeAttribute('src');
+
+  screenCrop.style.display = 'none';
+  // Restore screen state — caller (handleFiles loop) decides where we go next
+  app.dataset.screen = '1';
+
+  const r = _cropResolver;
+  _cropResolver = null;
+  if (r) r(result);
+}
+
+cropBack.addEventListener('click', () => closeCropScreen(null));
+
+cropFullBtn.addEventListener('click', () => {
+  // Just OCR the entire image — skip crop step
+  exportCroppedBlob(true);
+});
+
+cropConfirm.addEventListener('click', () => exportCroppedBlob(false));
+
+/**
+ * Lay out the image inside cropStage with object-fit-contain semantics.
+ * Sets _imgRect to the image's actual on-screen rect (relative to stage).
+ */
+function layoutCropImage() {
+  const stageRect = cropStage.getBoundingClientRect();
+  const sw = stageRect.width;
+  const sh = stageRect.height;
+  const iw = _imgNatural.width;
+  const ih = _imgNatural.height;
+  if (!sw || !sh || !iw || !ih) return;
+
+  const scale = Math.min(sw / iw, sh / ih);
+  const w = iw * scale;
+  const h = ih * scale;
+  const left = (sw - w) / 2;
+  const top = (sh - h) / 2;
+  _imgRect = { left, top, width: w, height: h };
+
+  cropImage.style.left = left + 'px';
+  cropImage.style.top = top + 'px';
+  cropImage.style.width = w + 'px';
+  cropImage.style.height = h + 'px';
+}
+
+function resetCropToFull() {
+  // Default crop rect = the full image, with a small inset so handles are easy to grab
+  const inset = 10;
+  _cropPos = {
+    left: inset,
+    top: inset,
+    width: Math.max(40, _imgRect.width - inset * 2),
+    height: Math.max(40, _imgRect.height - inset * 2),
+  };
+  applyCropRectStyle();
+}
+
+function applyCropRectStyle() {
+  cropRect.style.left = (_imgRect.left + _cropPos.left) + 'px';
+  cropRect.style.top = (_imgRect.top + _cropPos.top) + 'px';
+  cropRect.style.width = _cropPos.width + 'px';
+  cropRect.style.height = _cropPos.height + 'px';
+}
+
+// Re-layout on resize/orientation change
+window.addEventListener('resize', () => {
+  if (app.dataset.screen !== 'crop') return;
+  // Preserve crop ratio relative to image when resizing
+  const oldW = _imgRect.width, oldH = _imgRect.height;
+  const ratio = {
+    l: oldW ? _cropPos.left / oldW : 0,
+    t: oldH ? _cropPos.top / oldH : 0,
+    w: oldW ? _cropPos.width / oldW : 1,
+    h: oldH ? _cropPos.height / oldH : 1,
+  };
+  layoutCropImage();
+  _cropPos = {
+    left: ratio.l * _imgRect.width,
+    top: ratio.t * _imgRect.height,
+    width: ratio.w * _imgRect.width,
+    height: ratio.h * _imgRect.height,
+  };
+  applyCropRectStyle();
+});
+
+// ----- Drag interaction (move + resize via 8 handles) -----
+let _dragMode = null;          // 'move' | 'tl'/'tr'/'bl'/'br'/'t'/'b'/'l'/'r' | null
+let _dragStart = null;         // { px, py, lp: {...} }  pointer + crop-pos snapshot
+const MIN_CROP = 30;           // minimum CSS px for crop rect width/height
+
+cropStage.addEventListener('pointerdown', e => {
+  if (app.dataset.screen !== 'crop') return;
+  const target = e.target;
+  if (target.classList.contains('crop-handle')) {
+    _dragMode = target.dataset.handle;
+  } else if (target === cropRect) {
+    _dragMode = 'move';
+  } else {
+    return;
+  }
+  _dragStart = {
+    px: e.clientX,
+    py: e.clientY,
+    lp: { ..._cropPos },
+  };
+  cropStage.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+
+cropStage.addEventListener('pointermove', e => {
+  if (!_dragMode || !_dragStart) return;
+  const dx = e.clientX - _dragStart.px;
+  const dy = e.clientY - _dragStart.py;
+  const start = _dragStart.lp;
+  let { left, top, width, height } = start;
+
+  if (_dragMode === 'move') {
+    left = start.left + dx;
+    top = start.top + dy;
+  } else {
+    if (_dragMode.includes('l')) {
+      const nl = start.left + dx;
+      const nw = start.width - dx;
+      if (nw >= MIN_CROP) { left = nl; width = nw; }
+    }
+    if (_dragMode.includes('r')) {
+      width = Math.max(MIN_CROP, start.width + dx);
+    }
+    if (_dragMode.includes('t')) {
+      const nt = start.top + dy;
+      const nh = start.height - dy;
+      if (nh >= MIN_CROP) { top = nt; height = nh; }
+    }
+    if (_dragMode.includes('b')) {
+      height = Math.max(MIN_CROP, start.height + dy);
+    }
+  }
+
+  // Clamp to image bounds
+  if (left < 0) { width += left; left = 0; }
+  if (top < 0) { height += top; top = 0; }
+  if (left + width > _imgRect.width) width = _imgRect.width - left;
+  if (top + height > _imgRect.height) height = _imgRect.height - top;
+  width = Math.max(MIN_CROP, width);
+  height = Math.max(MIN_CROP, height);
+
+  _cropPos = { left, top, width, height };
+  applyCropRectStyle();
+});
+
+cropStage.addEventListener('pointerup', e => {
+  _dragMode = null;
+  _dragStart = null;
+  try { cropStage.releasePointerCapture(e.pointerId); } catch (_) {}
+});
+cropStage.addEventListener('pointercancel', () => {
+  _dragMode = null;
+  _dragStart = null;
+});
+
+/**
+ * Render the cropped region of the source image to a JPEG blob and resolve.
+ * If `useFullImage`, just returns the original file unchanged.
+ */
+async function exportCroppedBlob(useFullImage) {
+  const file = cropImage._file;
+  if (!file) {
+    closeCropScreen(null);
+    return;
+  }
+  if (useFullImage) {
+    closeCropScreen(file);
+    return;
+  }
+
+  try {
+    // Map crop rect from on-screen px to natural image px
+    const scaleX = _imgNatural.width / _imgRect.width;
+    const scaleY = _imgNatural.height / _imgRect.height;
+    const sx = Math.round(_cropPos.left * scaleX);
+    const sy = Math.round(_cropPos.top * scaleY);
+    const sw = Math.round(_cropPos.width * scaleX);
+    const sh = Math.round(_cropPos.height * scaleY);
+
+    // Draw the crop region at native resolution
+    const canvas = document.createElement('canvas');
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext('2d');
+
+    // Use a fresh Image (cropImage may not be fully decoded for canvas use)
+    const img = new Image();
+    img.src = cropImage.src;
+    await img.decode();
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    canvas.toBlob(blob => {
+      if (!blob) {
+        closeCropScreen(null);
+        return;
+      }
+      const cropped = new File([blob], (file.name || 'crop') + '.jpg',
+        { type: 'image/jpeg', lastModified: Date.now() });
+      closeCropScreen(cropped);
+    }, 'image/jpeg', 0.92);
+  } catch (e) {
+    closeCropScreen(null);
+    showError('Crop failed: ' + (e.message || e));
+  }
+}
+
+
+function renderList() {
+  renderTabs();
+  updateDestBadges();
+  const list = activeList();
+  if (!list) {
+    listWrap.innerHTML = `<div class="empty-state">
+      <div class="big">📋</div>
+      <div>No list selected.<br>Tap <strong>+ New list</strong> above to create one.</div>
+    </div>`;
+    return;
+  }
+
+  const items = list.items;
+  const active = items.filter(i => !i.done);
+  const done = items.filter(i => i.done);
+
+  let html = '';
+  if (items.length === 0) {
+    html = `<div class="empty-state">
+      <div class="big">📝</div>
+      <div>Nothing here yet.<br>Trace an image or tap + to add.</div>
+    </div>`;
+  } else {
+    // ITEMS / LINES panel
+    html += `<div class="list-panel">
+      <div class="panel-header">
+        <div class="title">Items / Lines</div>
+        <div class="right-side">
+          <div class="count">${active.length}</div>
+        </div>
+      </div>
+      <div class="cards-wrap">`;
+    if (active.length === 0) {
+      html += `<div class="panel-empty">All done. 🎉</div>`;
+    } else {
+      active.forEach(item => { html += renderCard(item); });
+    }
+    html += `</div></div>`;
+
+    // DONE panel
+    if (done.length > 0) {
+      html += `<div class="list-panel">
+        <div class="panel-header done">
+          <div class="title">✓ Done</div>
+          <div class="right-side">
+            <div class="count">${done.length}</div>
+            <button class="clear-done-btn">Clear</button>
+          </div>
+        </div>
+        <div class="cards-wrap">`;
+      done.forEach(item => { html += renderCard(item); });
+      html += `</div></div>`;
+    }
+  }
+  listWrap.innerHTML = html;
+
+  listWrap.querySelectorAll('.card').forEach(el => {
+    const id = el.dataset.id;
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('del') ||
+          e.target.classList.contains('edit')) return;
+      // After a long-press touch-drag release, swallow this synthetic click
+      if (_suppressNextCardClick) {
+        _suppressNextCardClick = false;
+        return;
+      }
+      toggleItem(id);
+    });
+    const editBtn = el.querySelector('.edit');
+    if (editBtn) editBtn.addEventListener('click', e => { e.stopPropagation(); openEditModal(id); });
+    const delBtn = el.querySelector('.del');
+    if (delBtn) delBtn.addEventListener('click', e => { e.stopPropagation(); deleteItem(id); });
+  });
+
+  const clearDoneBtn = listWrap.querySelector('.clear-done-btn');
+  if (clearDoneBtn) clearDoneBtn.addEventListener('click', clearDone);
+
+  attachReorder();
+}
+
+function renderCard(item) {
+  return `<div class="card ${item.done ? 'done' : ''}" data-id="${item.id}" draggable="${!item.done}">
+    <div class="text">${escapeHtml(item.text)}</div>
+    <div class="edit" title="Edit">✎</div>
+    <div class="del" title="Delete">✕</div>
+  </div>`;
+}
+
+function toggleItem(id) {
+  const list = activeList();
+  const i = list.items.find(x => x.id === id);
+  if (!i) return;
+  i.done = !i.done;
+  saveState();
+  renderList();
+}
+function deleteItem(id) {
+  const list = activeList();
+  list.items = list.items.filter(x => x.id !== id);
+  saveState();
+  renderList();
+}
+function clearDone() {
+  const list = activeList();
+  if (!list.items.some(i => i.done)) return;
+  list.items = list.items.filter(i => !i.done);
+  saveState();
+  renderList();
+}
+
+/* ========== REORDER (live DOM movement during drag) ==========
+   Matches the original Sample_-_ToDo.html pattern: the dragging card
+   actually moves through the DOM as you drag, so the gap where it
+   will land is exactly the gap you see — no separate line indicator.
+   At drop, we read the new DOM order back into state.
+   Works for both mouse (HTML5 drag) and touch (long-press → manual drag).
+============================================================ */
+let _dragId = null;
+let _cardLongPressTimer = null;
+let _touchDragActive = false;
+let _suppressNextCardClick = false; // brief guard so touch-drag-release doesn't toggle done
+
+// Find the sibling card the cursor is currently above. The dragging card
+// gets inserted *before* this element. If null, append to the end.
+function getDragAfterElement(container, y) {
+  const cards = [...container.querySelectorAll('.card:not(.dragging)')];
+  return cards.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: -Infinity }).element || null;
+}
+
+// Read the new order from the DOM and write it back to state.
+function reconstructOrderFromDOM() {
+  const list = activeList();
+  if (!list) return;
+  const newOrder = [];
+  // Collect cards in DOM order from both panels (active first, then done)
+  listWrap.querySelectorAll('.card').forEach(card => {
+    const item = list.items.find(i => i.id === card.dataset.id);
+    if (item) newOrder.push(item);
+  });
+  // Items not in the DOM (shouldn't normally happen) get appended unchanged
+  list.items.forEach(i => { if (!newOrder.includes(i)) newOrder.push(i); });
+  list.items = newOrder;
+  saveState();
+}
+
+function attachReorder() {
+  // Only the active-section container holds reorderable cards
+  const container = listWrap.querySelector('.list-panel:not(.done) .cards-wrap');
+  if (!container) return;
+  const cards = container.querySelectorAll('.card[draggable="true"]');
+
+  // ---- Desktop: HTML5 drag ----
+  cards.forEach(card => {
+    card.addEventListener('dragstart', e => {
+      _dragId = card.dataset.id;
+      // Add the class on the next frame so the browser captures the drag-image
+      // BEFORE the card becomes semi-transparent — looks much smoother.
+      requestAnimationFrame(() => card.classList.add('dragging'));
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', _dragId); } catch (_) {}
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      _dragId = null;
+    });
+  });
+
+  container.addEventListener('dragover', e => {
+    if (!_dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const dragging = container.querySelector('.card.dragging');
+    if (!dragging) return;
+    const after = getDragAfterElement(container, e.clientY);
+    if (after == null) container.appendChild(dragging);
+    else container.insertBefore(dragging, after);
+  });
+
+  container.addEventListener('drop', e => {
+    e.preventDefault();
+    if (!_dragId) return;
+    reconstructOrderFromDOM();
+    // Re-render to refresh listeners on the moved DOM
+    renderList();
+  });
+
+  // ---- Mobile: long-press → manual drag ----
+  cards.forEach(card => {
+    card.addEventListener('touchstart', e => {
+      if (e.target.classList.contains('edit') || e.target.classList.contains('del')) return;
+      const startX = e.touches[0].clientX;
+      const startY = e.touches[0].clientY;
+      clearTimeout(_cardLongPressTimer);
+      _cardLongPressTimer = setTimeout(() => {
+        _dragId = card.dataset.id;
+        _touchDragActive = true;
+        card.classList.add('dragging');
+        if (navigator.vibrate) navigator.vibrate(15);
+      }, 350);
+
+      const cancelOnMove = ev => {
+        if (_touchDragActive) return;
+        const t = ev.touches[0];
+        const dx = Math.abs(t.clientX - startX);
+        const dy = Math.abs(t.clientY - startY);
+        if (dx > 8 || dy > 8) clearTimeout(_cardLongPressTimer);
+      };
+      card.addEventListener('touchmove', cancelOnMove, { passive: true });
+      card.addEventListener('touchend', () => {
+        clearTimeout(_cardLongPressTimer);
+        card.removeEventListener('touchmove', cancelOnMove);
+      }, { once: true });
+    }, { passive: true });
+  });
+}
+
+// Bound ONCE on listWrap — survive re-renders and operate on _dragId.
+listWrap.addEventListener('touchmove', e => {
+  if (!_touchDragActive || !_dragId) return;
+  e.preventDefault(); // own the gesture so the page doesn't scroll while reordering
+  const t = e.touches[0];
+  const dragging = listWrap.querySelector('.card.dragging');
+  if (!dragging) return;
+  const container = dragging.parentElement;
+  if (!container) return;
+  const after = getDragAfterElement(container, t.clientY);
+  if (after == null) container.appendChild(dragging);
+  else if (after !== dragging) container.insertBefore(dragging, after);
+
+  // Auto-scroll near the top/bottom of the viewport so long lists are reachable
+  const EDGE = 60, SPEED = 8;
+  const screen = document.querySelector('.screen[id="screen2"]');
+  if (screen) {
+    if (t.clientY < EDGE) screen.scrollBy({ top: -SPEED });
+    else if (t.clientY > window.innerHeight - EDGE) screen.scrollBy({ top: SPEED });
+  }
+}, { passive: false });
+
+listWrap.addEventListener('touchend', () => {
+  clearTimeout(_cardLongPressTimer);
+  if (_touchDragActive && _dragId) {
+    // After re-render, the touchend → click that fires next would toggle done
+    // on the wrong card. Set a brief global guard that the card click handler checks.
+    _suppressNextCardClick = true;
+    setTimeout(() => { _suppressNextCardClick = false; }, 350);
+    reconstructOrderFromDOM();
+    renderList();
+  }
+  _touchDragActive = false;
+  _dragId = null;
+});
+listWrap.addEventListener('touchcancel', () => {
+  clearTimeout(_cardLongPressTimer);
+  if (_touchDragActive) {
+    listWrap.querySelectorAll('.card').forEach(c => c.classList.remove('dragging'));
+  }
+  _touchDragActive = false;
+  _dragId = null;
+});
+
+/* ========== FAB + ADD/EDIT MODAL ========== */
+let editingId = null;
+
+fab.addEventListener('click', () => openAddModal());
+
+function openAddModal() {
+  editingId = null;
+  modalTitle.textContent = 'Add new item';
+  modalSave.textContent = 'Add';
+  modalInput.value = '';
+  modalBg.classList.add('show');
+  setTimeout(() => modalInput.focus(), 100);
+}
+function openEditModal(id) {
+  const list = activeList();
+  const item = list.items.find(x => x.id === id);
+  if (!item) return;
+  editingId = id;
+  modalTitle.textContent = 'Edit item';
+  modalSave.textContent = 'Save';
+  modalInput.value = item.text;
+  modalBg.classList.add('show');
+  setTimeout(() => { modalInput.focus(); modalInput.select(); }, 100);
+}
+
+modalCancel.addEventListener('click', closeModal);
+modalBg.addEventListener('click', e => { if (e.target === modalBg) closeModal(); });
+modalSave.addEventListener('click', commitModal);
+modalInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') commitModal();
+  if (e.key === 'Escape') closeModal();
+});
+
+function closeModal() { modalBg.classList.remove('show'); editingId = null; }
+function commitModal() {
+  const text = modalInput.value.trim();
+  if (!text) { closeModal(); return; }
+  // Auto-create a list if none exists (FAB only enabled on screen 2 anyway)
+  if (!state.lists.length || !state.activeListId) {
+    const id = uid();
+    state.lists.push({ id, name: 'My list', items: [] });
+    state.activeListId = id;
+  }
+  const list = activeList();
+  if (editingId) {
+    const item = list.items.find(x => x.id === editingId);
+    if (item) item.text = text;
+  } else {
+    list.items.unshift({ id: uid(), text, done: false });
+  }
+  saveState();
+  renderList();
+  closeModal();
+}
+
+/* ========== LIST CRUD ========== */
+
+async function deleteList(id) {
+  const list = state.lists.find(l => l.id === id);
+  if (!list) return;
+  const msg = list.items.length > 0
+    ? `Delete "${list.name}" and all ${list.items.length} item${list.items.length === 1 ? '' : 's'}?`
+    : `Delete "${list.name}"?`;
+  const ok = await confirmDialog({ title: 'Delete list', message: msg, okLabel: 'Delete' });
+  if (!ok) return;
+  state.lists = state.lists.filter(l => l.id !== id);
+  if (state.activeListId === id) {
+    state.activeListId = state.lists.length > 0 ? state.lists[0].id : null;
+  }
+  saveState();
+  renderList();
+}
+
+/* ========== CUSTOM CONFIRM DIALOG ========== */
+const confirmModalBg = document.getElementById('confirmModalBg');
+const confirmTitleEl = document.getElementById('confirmTitle');
+const confirmMessageEl = document.getElementById('confirmMessage');
+const confirmOkBtn = document.getElementById('confirmOk');
+const confirmCancelBtn = document.getElementById('confirmCancel');
+
+function confirmDialog({ title = 'Are you sure?', message = '', okLabel = 'OK', cancelLabel = 'Cancel' } = {}) {
+  return new Promise(resolve => {
+    confirmTitleEl.textContent = title;
+    confirmMessageEl.textContent = message;
+    confirmOkBtn.textContent = okLabel;
+    confirmCancelBtn.textContent = cancelLabel;
+    confirmModalBg.classList.add('show');
+
+    const cleanup = result => {
+      confirmModalBg.classList.remove('show');
+      confirmOkBtn.removeEventListener('click', onOk);
+      confirmCancelBtn.removeEventListener('click', onCancel);
+      confirmModalBg.removeEventListener('click', onBgClick);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onBgClick = e => { if (e.target === confirmModalBg) cleanup(false); };
+    const onKey = e => {
+      if (e.key === 'Escape') cleanup(false);
+      else if (e.key === 'Enter') cleanup(true);
+    };
+    confirmOkBtn.addEventListener('click', onOk);
+    confirmCancelBtn.addEventListener('click', onCancel);
+    confirmModalBg.addEventListener('click', onBgClick);
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => confirmOkBtn.focus(), 100);
+  });
+}
+
+/* ========== CUSTOM PROMPT DIALOG ========== */
+const promptModalBg = document.getElementById('promptModalBg');
+const promptTitleEl = document.getElementById('promptTitle');
+const promptMessageEl = document.getElementById('promptMessage');
+const promptInput = document.getElementById('promptInput');
+const promptOkBtn = document.getElementById('promptOk');
+const promptCancelBtn = document.getElementById('promptCancel');
+
+function promptDialog({ title = 'Enter value', message = '', placeholder = '', defaultValue = '', okLabel = 'OK', cancelLabel = 'Cancel' } = {}) {
+  return new Promise(resolve => {
+    promptTitleEl.textContent = title;
+    promptMessageEl.textContent = message;
+    promptMessageEl.style.display = message ? 'block' : 'none';
+    promptInput.value = defaultValue;
+    promptInput.placeholder = placeholder;
+    promptOkBtn.textContent = okLabel;
+    promptCancelBtn.textContent = cancelLabel;
+    promptModalBg.classList.add('show');
+
+    const cleanup = result => {
+      promptModalBg.classList.remove('show');
+      promptOkBtn.removeEventListener('click', onOk);
+      promptCancelBtn.removeEventListener('click', onCancel);
+      promptModalBg.removeEventListener('click', onBgClick);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onOk = () => {
+      const val = promptInput.value.trim();
+      cleanup(val || null);
+    };
+    const onCancel = () => cleanup(null);
+    const onBgClick = e => { if (e.target === promptModalBg) cleanup(null); };
+    const onKey = e => {
+      if (e.key === 'Escape') cleanup(null);
+      else if (e.key === 'Enter') onOk();
+    };
+    promptOkBtn.addEventListener('click', onOk);
+    promptCancelBtn.addEventListener('click', onCancel);
+    promptModalBg.addEventListener('click', onBgClick);
+    document.addEventListener('keydown', onKey);
+    setTimeout(() => promptInput.focus(), 100);
+  });
+}
+
+/* ========== TOP-BAR LIST TABS ========== */
+
+function renderTabs() {
+  const lists = state.lists || [];
+  let html = '';
+  lists.forEach(l => {
+    const isActive = l.id === state.activeListId;
+    html += `<button
+      class="tab ${isActive ? 'active' : ''}"
+      data-id="${l.id}"
+      title="${escapeHtml(l.name)} (double-click to delete)"
+      type="button">${escapeHtml(l.name)}</button>`;
+  });
+  tabsScroll.innerHTML = html;
+  attachTabHandlers();
+}
+
+function attachTabHandlers() {
+  const tabs = tabsScroll.querySelectorAll('.tab');
+
+  tabs.forEach(tab => {
+    // Click → switch list
+    tab.addEventListener('click', e => {
+      // Don't switch if a long-press drag was just released on this tab
+      if (tab._suppressClick) {
+        tab._suppressClick = false;
+        return;
+      }
+      const id = tab.dataset.id;
+      if (id && id !== state.activeListId) {
+        state.activeListId = id;
+        saveState();
+        renderList();
+      }
+    });
+
+    // Double-click → delete this list (with confirm if it has items)
+    tab.addEventListener('dblclick', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteList(tab.dataset.id);
+    });
+    // Mobile: dblclick is unreliable on touch. Detect two taps within 350ms manually.
+    tab.addEventListener('touchend', e => {
+      const now = Date.now();
+      const last = tab._lastTapTime || 0;
+      tab._lastTapTime = now;
+      if (now - last < 350) {
+        e.preventDefault();
+        deleteList(tab.dataset.id);
+        tab._lastTapTime = 0;
+      }
+    });
+
+    // ===== Drag-to-reorder (live DOM movement, same pattern as cards) =====
+    tab.draggable = true;
+    tab.addEventListener('dragstart', e => {
+      _tabDragId = tab.dataset.id;
+      requestAnimationFrame(() => tab.classList.add('dragging'));
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', _tabDragId); } catch (_) {}
+    });
+    tab.addEventListener('dragend', () => {
+      tab.classList.remove('dragging');
+      _tabDragId = null;
+    });
+
+    // Mobile long-press hookup
+    attachTabLongPress(tab);
+  });
+}
+
+// Find the sibling tab the cursor is currently left-of. The dragging tab
+// gets inserted *before* this tab. If null, append to end.
+function getDragAfterTab(container, x) {
+  const tabs = [...container.querySelectorAll('.tab:not(.dragging)')];
+  return tabs.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = x - box.left - box.width / 2;
+    if (offset < 0 && offset > closest.offset) return { offset, element: child };
+    return closest;
+  }, { offset: -Infinity }).element || null;
+}
+
+// Read the new tab order from the DOM and write it back to state
+function reconstructTabOrderFromDOM() {
+  const newOrder = [];
+  tabsScroll.querySelectorAll('.tab').forEach(tabEl => {
+    const list = state.lists.find(l => l.id === tabEl.dataset.id);
+    if (list) newOrder.push(list);
+  });
+  // Append any lists that somehow weren't in the DOM (defensive)
+  state.lists.forEach(l => { if (!newOrder.includes(l)) newOrder.push(l); });
+  state.lists = newOrder;
+  saveState();
+}
+
+// Container-level desktop dragover — bound ONCE, not per-render
+tabsScroll.addEventListener('dragover', e => {
+  if (!_tabDragId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const dragging = tabsScroll.querySelector('.tab.dragging');
+  if (!dragging) return;
+  const after = getDragAfterTab(tabsScroll, e.clientX);
+  if (after == null) tabsScroll.appendChild(dragging);
+  else if (after !== dragging) tabsScroll.insertBefore(dragging, after);
+});
+
+tabsScroll.addEventListener('drop', e => {
+  e.preventDefault();
+  if (!_tabDragId) return;
+  reconstructTabOrderFromDOM();
+  renderTabs();
+});
+
+let _tabDragId = null;
+let _tabLongPressTimer = null;
+let _tabLongPressActive = false;
+
+function attachTabLongPress(tab) {
+  tab.addEventListener('touchstart', e => {
+    const startX = e.touches[0].clientX;
+    const startY = e.touches[0].clientY;
+    _tabLongPressActive = false;
+    clearTimeout(_tabLongPressTimer);
+    _tabLongPressTimer = setTimeout(() => {
+      _tabLongPressActive = true;
+      _tabDragId = tab.dataset.id;
+      tab.classList.add('dragging');
+      // Take the gesture back from the browser's pan so our preventDefault
+      // in the touchmove handler is honored.
+      tab.style.touchAction = 'none';
+      if (navigator.vibrate) navigator.vibrate(15);
+    }, 350);
+
+    // Cancel long-press if user starts scrolling (any direction)
+    const cancelOnMove = ev => {
+      if (_tabLongPressActive) return;
+      const t = ev.touches[0];
+      const dx = Math.abs(t.clientX - startX);
+      const dy = Math.abs(t.clientY - startY);
+      if (dx > 8 || dy > 8) clearTimeout(_tabLongPressTimer);
+    };
+    tab.addEventListener('touchmove', cancelOnMove, { passive: true });
+    tab.addEventListener('touchend', () => {
+      tab.removeEventListener('touchmove', cancelOnMove);
+    }, { once: true });
+  }, { passive: true });
+
+  tab.addEventListener('touchend', () => {
+    clearTimeout(_tabLongPressTimer);
+  });
+  tab.addEventListener('touchcancel', () => {
+    clearTimeout(_tabLongPressTimer);
+    _tabLongPressActive = false;
+  });
+}
+
+// Bound ONCE on the scroller — survives re-render via _tabDragId state.
+// Touch version of dragover: live-move the dragging tab through the DOM.
+tabsScroll.addEventListener('touchmove', e => {
+  if (!_tabLongPressActive || !_tabDragId) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  const dragging = tabsScroll.querySelector('.tab.dragging');
+  if (!dragging) return;
+  const after = getDragAfterTab(tabsScroll, t.clientX);
+  if (after == null) tabsScroll.appendChild(dragging);
+  else if (after !== dragging) tabsScroll.insertBefore(dragging, after);
+
+  // Auto-scroll the tabs row when finger nears the left/right edge
+  const scrollerRect = tabsScroll.getBoundingClientRect();
+  const EDGE = 40, SPEED = 6;
+  if (t.clientX < scrollerRect.left + EDGE) tabsScroll.scrollLeft -= SPEED;
+  else if (t.clientX > scrollerRect.right - EDGE) tabsScroll.scrollLeft += SPEED;
+}, { passive: false });
+
+tabsScroll.addEventListener('touchend', () => {
+  clearTimeout(_tabLongPressTimer);
+  if (_tabLongPressActive && _tabDragId) {
+    // Suppress the click that follows touchend on the dragged tab
+    const draggedEl = tabsScroll.querySelector(`.tab[data-id="${_tabDragId}"]`);
+    if (draggedEl) draggedEl._suppressClick = true;
+    reconstructTabOrderFromDOM();
+    renderTabs();
+  }
+  _resetTabDrag();
+});
+
+tabsScroll.addEventListener('touchcancel', _resetTabDrag);
+
+function _resetTabDrag() {
+  tabsScroll.querySelectorAll('.tab').forEach(c => {
+    c.classList.remove('dragging');
+    c.style.touchAction = '';
+  });
+  _tabDragId = null;
+  _tabLongPressActive = false;
+  clearTimeout(_tabLongPressTimer);
+}
+
+function showInlineNewListInput() {
+  // Swap the pinned + icon on the topbar with a focused text input.
+  // Enter or blur with text → create list. Escape or empty blur → revert.
+  const plusBtn = document.getElementById('newListIcon');
+  if (!plusBtn) return;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tab-input';
+  input.id = 'newListIconInput';
+  input.placeholder = 'List name...';
+  input.maxLength = 40;
+  input.autocomplete = 'off';
+
+  plusBtn.replaceWith(input);
+  input.focus();
+
+  let committed = false;
+  const restorePlusBtn = () => {
+    // Recreate the + icon button identical to the original markup
+    const btn = document.createElement('button');
+    btn.className = 'icon-btn new-list-icon';
+    btn.id = 'newListIcon';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'New list');
+    btn.title = 'New list';
+    btn.textContent = '+';
+    btn.addEventListener('click', showInlineNewListInput);
+    input.replaceWith(btn);
+  };
+
+  const commit = () => {
+    if (committed) return;
+    committed = true;
+    const name = input.value.trim();
+    if (name) {
+      const id = uid();
+      state.lists.push({ id, name, items: [] });
+      state.activeListId = id;
+      saveState();
+      restorePlusBtn();
+      renderList();
+    } else {
+      restorePlusBtn();
+    }
+  };
+  const cancel = () => {
+    if (committed) return;
+    committed = true;
+    restorePlusBtn();
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+// Wire up the pinned + icon (only attached once at script init below)
+document.getElementById('newListIcon').addEventListener('click', showInlineNewListInput);
+
+/* ========== UTILS ========== */
+function humanize(s) { return s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, ' '); }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ========== INIT ========== */
+loadState();
+saveState();
+updateDestBadges();
+const _list = activeList();
+if (_list && _list.items.length > 0) {
+  goScreen2();
+}
+</script>
+</body>
+</html>
